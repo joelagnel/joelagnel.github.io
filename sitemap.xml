@@ -1,0 +1,31 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>
+    <url>
+        <loc>
+            http://www.linuxinternals.org//blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/
+        </loc>
+        <lastmod>2014-04-24T21:14:06-05:00</lastmod>
+    </url>
+    <url>
+        <loc>
+            http://www.linuxinternals.org//blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/
+        </loc>
+        <lastmod>2014-04-25T08:49:48-05:00</lastmod>
+    </url>
+    <url>
+        <loc>http://www.linuxinternals.org//technical-resources/</loc>
+        <lastmod>2014-05-02T12:08:06-05:00</lastmod>
+    </url>
+    <url>
+        <loc>http://www.linuxinternals.org//</loc>
+        <lastmod>2014-04-25T08:49:48-05:00</lastmod>
+    </url>
+    <url>
+        <loc>http://www.linuxinternals.org//robots.txt</loc>
+        <lastmod>2014-04-22T23:38:59-05:00</lastmod>
+    </url>
+    <url>
+        <loc>http://www.linuxinternals.org//blog/archives/</loc>
+        <lastmod>2014-04-25T08:49:48-05:00</lastmod>
+    </url>
+</urlset>
