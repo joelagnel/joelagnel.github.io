@@ -90,9 +90,6 @@
 
 <time datetime="2014-05-07T22:42:45-05:00" pubdate data-updated="true">May 7<span>th</span>, 2014</time>
         
-           | <a href="/blog/2014/05/07/spinlock-implementation-in-linux-kernel/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">Comments</a>
-        
       </p>
     
   </header>
@@ -154,7 +151,7 @@
 </span><span class='line'>}                                                                       \</span></code></pre></td></tr></table></div></figure>
 
 
-<p>The function has several imporant bit. First it disables preemption on line 5, then tries to <em>atomically</em> acquire the spinlock on line 6. If it succeeds it breaks from the <code>for</code> loop on line 7, leaving preemption disabled for the duration of crticial section being protected by the lock. If it didn&rsquo;t succeed in acquiring the lock (maybe some other CPU grabbed the lock already), it enables preemption back and spins till it can acquire the lock keeping <em>preemption enabled during this period</em>. Each time it detects that the lock can&rsquo;t be acquired in the <code>while</code> loop, it calls an architecture specific relax function which has the effect executing some variant of a <code>no-operation</code> instruction that causes the CPU to execute such an instruction efficiently in a lower power state. We&rsquo;ll talk about the <code>break_lock</code> usage in a bit. Soon as it knows the lock is free, say the <code>raw_spin_can_lock(lock)</code> function returned 1, it goes back to the beginning of the <code>for</code> loop and tries to acquire the lock again.</p>
+<p>The function has several imporant bits. First it disables preemption on line 5, then tries to <em>atomically</em> acquire the spinlock on line 6. If it succeeds it breaks from the <code>for</code> loop on line 7, leaving preemption disabled for the duration of crticial section being protected by the lock. If it didn&rsquo;t succeed in acquiring the lock (maybe some other CPU grabbed the lock already), it enables preemption back and spins till it can acquire the lock keeping <em>preemption enabled during this period</em>. Each time it detects that the lock can&rsquo;t be acquired in the <code>while</code> loop, it calls an architecture specific relax function which has the effect executing some variant of a <code>no-operation</code> instruction that causes the CPU to execute such an instruction efficiently in a lower power state. We&rsquo;ll talk about the <code>break_lock</code> usage in a bit. Soon as it knows the lock is free, say the <code>raw_spin_can_lock(lock)</code> function returned 1, it goes back to the beginning of the <code>for</code> loop and tries to acquire the lock again.</p>
 
 <p>What&rsquo;s important no note here is the reason for keeping preemption enabled (we&rsquo;ll see in a bit that for UP configurations, this is not done). While the kernel is spinning on a lock, other processes shouldn&rsquo;t be kept from preempting the spinning thread. The lock in these cases have been acquired on a <em>different CPU</em> because (assuming bug free code) its impossible the current CPU which is trying to grab the lock has already acquired it, because preemption is disabled on acquiral. So it makes sense for the spinning kernel thread to be preempted giving others CPU time.
 It is also possible that more than one process on the current CPU is trying to acquire the same lock and spinning on it, in this case the kernel gets continuously preempted between the 2 threads fighting for the lock, while some other CPU in the cluster happily holds the lock, hopefully for not too long.</p>
@@ -220,9 +217,6 @@ It is also possible that more than one process on the current CPU is trying to a
 
 <time datetime="2014-04-24T20:28:24-05:00" pubdate data-updated="true">Apr 24<span>th</span>, 2014</time>
         
-           | <a href="/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/">Comments</a>
-        
       </p>
     
   </header>
@@ -287,9 +281,6 @@ It is also possible that more than one process on the current CPU is trying to a
 
 
 <time datetime="2014-04-22T23:06:11-05:00" pubdate data-updated="true">Apr 22<span>nd</span>, 2014</time>
-        
-           | <a href="/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/">Comments</a>
         
       </p>
     
@@ -411,19 +402,6 @@ There you go, now when the COW memory region is written to, a page fault happens
 
 </footer>
   
-
-<script type="text/javascript">
-      var disqus_shortname = 'linuxinternals1';
-      
-        
-        var disqus_script = 'count.js';
-      
-    (function () {
-      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
-      dsq.src = '//' + disqus_shortname + '.disqus.com/' + disqus_script;
-      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
-    }());
-</script>
 
 
 
