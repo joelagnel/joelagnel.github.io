@@ -5,11 +5,11 @@
 <!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
 <head>
   <meta charset="utf-8">
-  <title>Spinlock Implementation in Linux - scratchpad</title>
+  <title>Linux Spinlock Internals - scratchpad</title>
   <meta name="author" content="Joel Fernandes">
 
   
-  <meta name="description" content="This article tries to clarify how spinlock is implemented in the face of premption. Future articles may speak about handling for interrupts, and how &hellip;">
+  <meta name="description" content="This article tries to clarify how spinlocks are implemented in the Linux kernel and how they should be used correctly in the face of premption and &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -81,7 +81,7 @@
   
   <header>
     
-      <h1 class="entry-title">Spinlock Implementation in Linux</h1>
+      <h1 class="entry-title">Linux Spinlock Internals</h1>
     
     
       <p class="meta">
@@ -107,7 +107,7 @@
   </header>
 
 
-<div class="entry-content"><p>This article tries to clarify how spinlock is implemented in the face of premption. Future articles may speak about handling for interrupts, and how to use the right spin_lock/unlock function for the right purpose. The focus of this article will be more on basic concepts than details, as details tend to be forgotten more easily and shouldn&rsquo;t be too hard to look up.</p>
+<div class="entry-content"><p>This article tries to clarify how spinlocks are implemented in the Linux kernel and how they should be used correctly in the face of premption and interrupts. The focus of this article will be more on basic concepts than details, as details tend to be forgotten more easily and shouldn&rsquo;t be too hard to look up although attention is paid to it to the extent that it helps understanding.</p>
 
 <p>Fundamentally somewhere in <code>include/linux/spinlock.h</code>, a decision is made on which spinlock header to pull based on whether SMP is enabled or not:</p>
 
@@ -192,13 +192,80 @@ It is also possible that more than one process on the current CPU is trying to a
 </span><span class='line'>#define _raw_spin_lock(lock)                    __LOCK(lock)</span></code></pre></td></tr></table></div></figure>
 
 
-<p>All that needs to be done is disabled preemption and acquire the lock. The code really doesn&rsquo;t do anything other than disable preemption. The references to the <code>lock</code> variable are just to suppress compiler warnings as mentioned in comments in the source file.</p>
+<p>All that needs to be done is to disable preemption and acquire the lock. The code really doesn&rsquo;t do anything other than disable preemption. The references to the <code>lock</code> variable are just to suppress compiler warnings as mentioned in comments in the source file.</p>
 
 <p>There&rsquo;s no spinning at all here like the UP case and the reason is simple: in the SMP case, remember we had agreed that while a lock is <em>acquired</em> by a particular CPU (in this case just the 1 CPU), no other process on that CPU should have acquired the lock. How could it have gotten a chance to do so with preemption disabled on that CPU to begin with?</p>
 
 <p>Even if the code is buggy, (say the same process tries to acquires the lock twice), its still impossible that 2 <em>different processes</em> try to acquire the same lock on a Uni-Processor system considering preemption is disabled on lock acquiral. Following that idea, in the Uni-processor case, since we are running on only 1 CPU, all that needs to be done is to disable preemption, since the fact that we are being allowed to disable preemption to begin with, means that no one else has acquired the lock. Works really well!</p>
 
-<p>Hope this post made a few things more clear, there&rsquo;s a lot more to spinlocking than I wished I could write. A good reference is <a href="https://www.kernel.org/pub/linux/kernel/people/rusty/kernel-locking/">Rusty&rsquo;s Unreliable Guide To Locking</a>.</p>
+<h2>Sharing spinlocks between interrupt and process-context</h2>
+
+<p>It is possible that a critical section needs to be protected by the same lock in both an interrupt and in non-interrupt (process) execution context in the kernel. In this case <code>spin_lock_irqsave</code> and the <code>spin_unlock_irqrestore</code> variants have to be used to protect the critical section. This has the effect of disabling interrupts on the  executing CPU. Imagine what would happen if you just used <code>spin_lock</code> in the process context?</p>
+
+<p>Picture the following:</p>
+
+<ol>
+<li>Process context kernel code acquires <em>lock A</em> using <code>spin_lock</code>.</li>
+<li>While the lock is held, an interrupt comes in on the same CPU and executes.</li>
+<li>Interrupt Service Routing (ISR) tries to acquire <em>lock A</em>, and spins continuously waiting for it.</li>
+<li>For the during of the ISR, the Process context is blocked and never gets a chance to run and free the lock.</li>
+<li>Hard lock up condition on the CPU!</li>
+</ol>
+
+
+<p>To prevent this, the process context code needs call <code>spin_lock_irqsave</code> which has the effect of disabling interrupts on that particular CPU along with the regular disabling of preemption we saw earlier <em>before</em> trying to grab the lock.</p>
+
+<p>Note that the ISR can still just call <code>spin_lock</code> instead of <code>spin_lock_irqsave</code> because interrupts are disabled anyway during ISR execution. Often times people use <code>spin_lock_irqsave</code> in an ISR, that&rsquo;s not necessary.</p>
+
+<p>Also note that during the executing of the critical section protected by <code>spin_lock_irqsave</code>, the interrupts are only disabled on the executing CPU. The same interrupt can come in on a different CPU and the ISR will be executed there, but that will not trigger the hard lock condition I talked about, because the process-context code is not blocked and can finish executing the locked critical section and release the lock while the ISR spins on the lock on a different CPU waiting for it. The process context does get a chance to finish and free the lock causing no hard lock up.</p>
+
+<p>Following is what the <code>spin_lock_irqsave</code> code looks like for the SMP case, UP case is similar, look it up. BTW, the only difference here compared to the regular <code>spin_lock</code> I described in the beginning are the <code>local_irq_save</code> and <code>local_irq_restore</code> that accompany the <code>preempt_disable</code> and <code>preempt_enable</code> in the lock code:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>#define BUILD_LOCK_OPS(op, locktype)                                    \
+</span><span class='line'>unsigned long __lockfunc __raw_##op##_lock_irqsave(locktype##_t *lock)  \
+</span><span class='line'>{                                                                       \
+</span><span class='line'>        unsigned long flags;                                            \
+</span><span class='line'>                                                                        \
+</span><span class='line'>        for (;;) {                                                      \
+</span><span class='line'>                preempt_disable();                                      \
+</span><span class='line'>                local_irq_save(flags);                                  \
+</span><span class='line'>                if (likely(do_raw_##op##_trylock(lock)))                \
+</span><span class='line'>                        break;                                          \
+</span><span class='line'>                local_irq_restore(flags);                               \
+</span><span class='line'>                preempt_enable();                                       \
+</span><span class='line'>                                                                        \
+</span><span class='line'>                if (!(lock)-&gt;break_lock)                                \
+</span><span class='line'>                        (lock)-&gt;break_lock = 1;                         \
+</span><span class='line'>                while (!raw_##op##_can_lock(lock) && (lock)-&gt;break_lock)\
+</span><span class='line'>                        arch_##op##_relax(&lock-&gt;raw_lock);             \
+</span><span class='line'>        }                                                               \
+</span><span class='line'>        (lock)-&gt;break_lock = 0;                                         \
+</span><span class='line'>        return flags;                                                   \
+</span><span class='line'>}                                                                       \</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Hope this post made a few things more clear, there&rsquo;s a lot more to spinlocking. A good reference is <a href="https://www.kernel.org/pub/linux/kernel/people/rusty/kernel-locking/">Rusty&rsquo;s Unreliable Guide To Locking</a>.</p>
 </div>
 
 
@@ -260,7 +327,7 @@ It is also possible that more than one process on the current CPU is trying to a
   <ul id="recent_posts">
     
       <li class="post">
-        <a href="/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">Spinlock Implementation in Linux</a>
+        <a href="/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">Linux Spinlock Internals</a>
       </li>
     
       <li class="post">
