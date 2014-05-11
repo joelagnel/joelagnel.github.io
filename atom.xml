@@ -4,7 +4,7 @@
   <title><![CDATA[scratchpad]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2014-05-11T00:58:47-05:00</updated>
+  <updated>2014-05-11T11:20:23-05:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -18,7 +18,7 @@
     <link href="http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel/"/>
     <updated>2014-05-07T22:42:45-05:00</updated>
     <id>http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel</id>
-    <content type="html"><![CDATA[<p>This article tries to clarify how spinlocks are implemented in the Linux kernel and how they should be used correctly in the face of premption and interrupts. The focus of this article will be more on basic concepts than details, as details tend to be forgotten more easily and shouldn&rsquo;t be too hard to look up although attention is paid to it to the extent that it helps understanding.</p>
+    <content type="html"><![CDATA[<p>This article tries to clarify how spinlocks are implemented in the Linux kernel and how they should be used correctly in the face of preemption and interrupts. The focus of this article will be more on basic concepts than details, as details tend to be forgotten more easily and shouldn&rsquo;t be too hard to look up although attention is paid to it to the extent that it helps understanding.</p>
 
 <p>Fundamentally somewhere in <code>include/linux/spinlock.h</code>, a decision is made on which spinlock header to pull based on whether SMP is enabled or not:</p>
 
@@ -76,14 +76,14 @@
 
 <p>The function has several imporant bits. First it disables preemption on line 5, then tries to <em>atomically</em> acquire the spinlock on line 6. If it succeeds it breaks from the <code>for</code> loop on line 7, leaving preemption disabled for the duration of crticial section being protected by the lock. If it didn&rsquo;t succeed in acquiring the lock (maybe some other CPU grabbed the lock already), it enables preemption back and spins till it can acquire the lock keeping <em>preemption enabled during this period</em>. Each time it detects that the lock can&rsquo;t be acquired in the <code>while</code> loop, it calls an architecture specific relax function which has the effect executing some variant of a <code>no-operation</code> instruction that causes the CPU to execute such an instruction efficiently in a lower power state. We&rsquo;ll talk about the <code>break_lock</code> usage in a bit. Soon as it knows the lock is free, say the <code>raw_spin_can_lock(lock)</code> function returned 1, it goes back to the beginning of the <code>for</code> loop and tries to acquire the lock again.</p>
 
-<p>What&rsquo;s important no note here is the reason for keeping preemption enabled (we&rsquo;ll see in a bit that for UP configurations, this is not done). While the kernel is spinning on a lock, other processes shouldn&rsquo;t be kept from preempting the spinning thread. The lock in these cases have been acquired on a <em>different CPU</em> because (assuming bug free code) its impossible the current CPU which is trying to grab the lock has already acquired it, because preemption is disabled on acquiral. So it makes sense for the spinning kernel thread to be preempted giving others CPU time.
+<p>What&rsquo;s important to note here is the reason for keeping preemption enabled (we&rsquo;ll see in a bit that for UP configurations, this is not done). While the kernel is spinning on a lock, other processes shouldn&rsquo;t be kept from preempting the spinning thread. The lock in these cases have been acquired on a <em>different CPU</em> because (assuming bug free code) it&rsquo;s impossible the current CPU which is trying to grab the lock has already acquired it, because preemption is disabled on acquiral. So it makes sense for the spinning kernel thread to be preempted giving others CPU time.
 It is also possible that more than one process on the current CPU is trying to acquire the same lock and spinning on it, in this case the kernel gets continuously preempted between the 2 threads fighting for the lock, while some other CPU in the cluster happily holds the lock, hopefully for not too long.</p>
 
 <p>That&rsquo;s where the <code>break_lock</code> element in the lock structure comes in. Its used to signal to the lock-holding processor in the cluster that there is someone else trying to acquire the lock. This can cause the lock to released early by the holder if required.</p>
 
 <p>Now lets see what happens in the UP (Uni-Processor) case.</p>
 
-<p>Believe it or not, its really this simple:</p>
+<p>Believe it or not, it&rsquo;s really this simple:</p>
 
 <figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
@@ -107,7 +107,7 @@ It is also possible that more than one process on the current CPU is trying to a
 
 <p>There&rsquo;s no spinning at all here like the UP case and the reason is simple: in the SMP case, remember we had agreed that while a lock is <em>acquired</em> by a particular CPU (in this case just the 1 CPU), no other process on that CPU should have acquired the lock. How could it have gotten a chance to do so with preemption disabled on that CPU to begin with?</p>
 
-<p>Even if the code is buggy, (say the same process tries to acquires the lock twice), its still impossible that 2 <em>different processes</em> try to acquire the same lock on a Uni-Processor system considering preemption is disabled on lock acquiral. Following that idea, in the Uni-processor case, since we are running on only 1 CPU, all that needs to be done is to disable preemption, since the fact that we are being allowed to disable preemption to begin with, means that no one else has acquired the lock. Works really well!</p>
+<p>Even if the code is buggy, (say the same process tries to acquires the lock twice), it&rsquo;s still impossible that 2 <em>different processes</em> try to acquire the same lock on a Uni-Processor system considering preemption is disabled on lock acquiral. Following that idea, in the Uni-processor case, since we are running on only 1 CPU, all that needs to be done is to disable preemption, since the fact that we are being allowed to disable preemption to begin with, means that no one else has acquired the lock. Works really well!</p>
 
 <h2>Sharing spinlocks between interrupt and process-context</h2>
 
@@ -119,7 +119,7 @@ It is also possible that more than one process on the current CPU is trying to a
 <li>Process context kernel code acquires <em>lock A</em> using <code>spin_lock</code>.</li>
 <li>While the lock is held, an interrupt comes in on the same CPU and executes.</li>
 <li>Interrupt Service Routing (ISR) tries to acquire <em>lock A</em>, and spins continuously waiting for it.</li>
-<li>For the during of the ISR, the Process context is blocked and never gets a chance to run and free the lock.</li>
+<li>For the duration of the ISR, the Process context is blocked and never gets a chance to run and free the lock.</li>
 <li>Hard lock up condition on the CPU!</li>
 </ol>
 
