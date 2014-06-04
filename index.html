@@ -9,7 +9,7 @@
   <meta name="author" content="Joel Fernandes">
 
   
-  <meta name="description" content="This article tries to clarify how spinlocks are implemented in the Linux kernel and how they should be used correctly in the face of preemption and &hellip;">
+  <meta name="description" content="Recently, I&rsquo;ve been wanting to remotely be able to program a MicroSD card with a new bootloader or filesystem without removing the card from &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -78,6 +78,57 @@
     <div id="content">
       <div class="blog-index">
   
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2014/06/04/a-microsd-card-remote-switcher/">MicroSD Card Remote Switch</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-06-04T06:12:55-05:00" pubdate data-updated="true">Jun 4<span>th</span>, 2014</time>
+        
+           | <a href="/blog/2014/06/04/a-microsd-card-remote-switcher/#disqus_thread"
+             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/06/04/a-microsd-card-remote-switcher/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p>Recently, I&rsquo;ve been wanting to remotely be able to program a MicroSD card with a new bootloader or filesystem <em>without</em> removing the card from its embedded target board (such as a Beaglebone or Pandaboard). Due to the lack of any such existing tools, I decided to design my own board. Finally have got it working, below are some pictures and a screencast demo video of the switcher in action! I sprinkled some power and status LED to show the user what&rsquo;s going on.</p>
+
+<p>The base board requires two <a href="https://www.sparkfun.com/products/9419">SparkFun MicroSD sniffers</a>. The card cage on the sniffer is unused for my purposes. The switcher is controlled through an <a href="https://www.sparkfun.com/products/9717">FTDI cable</a>.
+I also <a href="https://github.com/joelagnel/microsd-switch/blob/master/sw/switch.c">wrote up</a> a <code>switch</code> program to control the switcher. You just have to pass to it the FTDI&rsquo;s serial number and whether you want to switch to host-mode (for programming the card) or target-mode (for booting the programmed card).</p>
+
+<p>Pictures&hellip;
+<img src="https://raw.githubusercontent.com/joelagnel/microsd-switch/master/board-pics/microsd-inaction/photo5.jpg">
+<img src="https://raw.githubusercontent.com/joelagnel/microsd-switch/master/board-pics/microsd-inaction/photo2.jpg">
+<img src="https://raw.githubusercontent.com/joelagnel/microsd-switch/master/board-pics/front.png"></p>
+
+<p>Screencast&hellip;<iframe width="100%" height="515" src="//www.youtube.com/embed/StpIihVQ7oM" frameborder="0" allowfullscreen>
+</iframe>
+Hope you enjoyed it, let me know what yout think :)</p>
+</div>
+  
+  
+
+
+    </article>
   
   
     <article>
@@ -459,6 +510,10 @@ There you go, now when the COW memory region is written to, a page fault happens
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/06/04/a-microsd-card-remote-switcher/">MicroSD Card Remote Switch</a>
+      </li>
     
       <li class="post">
         <a href="/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">Linux Spinlock Internals</a>
