@@ -4,7 +4,7 @@
   <title><![CDATA[scratchpad]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2014-06-04T06:47:59-05:00</updated>
+  <updated>2014-06-04T06:50:12-05:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -14,7 +14,7 @@
 
   
   <entry>
-    <title type="html"><![CDATA[MicroSD Card Remote Switch]]></title>
+    <title type="html"><![CDATA[MicroSD Card Remote Switcher]]></title>
     <link href="http://www.linuxinternals.org/blog/2014/06/04/a-microsd-card-remote-switcher/"/>
     <updated>2014-06-04T06:12:55-05:00</updated>
     <id>http://www.linuxinternals.org/blog/2014/06/04/a-microsd-card-remote-switcher</id>
