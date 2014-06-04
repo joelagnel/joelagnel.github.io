@@ -4,7 +4,7 @@
   <title><![CDATA[scratchpad]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2014-06-04T06:50:42-05:00</updated>
+  <updated>2014-06-04T07:10:36-05:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -29,7 +29,9 @@ I also <a href="https://github.com/joelagnel/microsd-switch/blob/master/sw/switc
 <img src="https://raw.githubusercontent.com/joelagnel/microsd-switch/master/board-pics/front.png"></p>
 
 <p>Screencast&hellip;<iframe width="100%" height="515" src="//www.youtube.com/embed/StpIihVQ7oM" frameborder="0" allowfullscreen>
-</iframe>
+</iframe></p>
+
+<p><a href="https://github.com/joelagnel/microsd-switch">Hardware design files are available here</a> under a CC-BY-SA license.
 Hope you enjoyed it, let me know what yout think :)</p>
 ]]></content>
   </entry>
