@@ -1,116 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
 
-<!DOCTYPE html>
-<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
-<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
-<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
-<head>
-  <meta charset="utf-8">
-  <title>LinuxInternals.org</title>
-  <meta name="author" content="Joel Fernandes">
-
-  
-  <meta name="description" content="Recently, I&rsquo;ve been wanting to remotely be able to program a MicroSD card with a new bootloader or filesystem without removing the card from &hellip;">
-  
-
-  <!-- http://t.co/dKP3o1e -->
-  <meta name="HandheldFriendly" content="True">
-  <meta name="MobileOptimized" content="320">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-
-  
-  <link rel="canonical" href="http://www.linuxinternals.org">
-  <link href="/favicon.png" rel="icon">
-  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
-  <link href="/atom.xml" rel="alternate" title="LinuxInternals.org" type="application/atom+xml">
-  <script src="/javascripts/modernizr-2.0.js"></script>
-  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
-  <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/libs/jquery.min.js"%3E%3C/script%3E'))</script>
-  <script src="/javascripts/octopress.js" type="text/javascript"></script>
-  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
-<link href="//fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
-<link href="//fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
-
-  
-  <script type="text/javascript">
-    var _gaq = _gaq || [];
-    _gaq.push(['_setAccount', 'UA-50777115-1']);
-    _gaq.push(['_trackPageview']);
-
-    (function() {
-      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
-      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
-      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
-    })();
-  </script>
-
-
-</head>
-
-<body   >
-  <header role="banner"><hgroup>
-  <h1><a href="/">LinuxInternals.org</a></h1>
-  
-    <h2>Tinkering with Embedded Linux</h2>
-  
-</hgroup>
-
-</header>
-  <nav role="navigation"><ul class="subscription" data-subscription="rss">
-  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
-  
-</ul>
-  
-<form action="https://www.google.com/search" method="get">
-  <fieldset role="search">
-    <input type="hidden" name="q" value="site:www.linuxinternals.org" />
-    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
-  </fieldset>
-</form>
-  
-<ul class="main-navigation">
-  <li><a href="/">Blog</a></li>
-  <li><a href="/blog/archives">Archives</a></li>
-  <li><a href="/technical-resources/">Resources</a></li>
-</ul>
-
-</nav>
-  <div id="main">
-    <div id="content">
-      <div class="blog-index">
-  
-  
-  
-    <article>
-      
-  <header>
+  <title><![CDATA[LinuxInternals.org]]></title>
+  <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
+  <link href="http://www.linuxinternals.org/"/>
+  <updated>2015-11-05T11:22:12-06:00</updated>
+  <id>http://www.linuxinternals.org/</id>
+  <author>
+    <name><![CDATA[Joel Fernandes]]></name>
     
-      <h1 class="entry-title"><a href="/blog/2014/06/04/a-microsd-card-remote-switcher/">MicroSD Card Remote Switch</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
 
   
-
-
-<time datetime="2014-06-04T06:12:55-05:00" pubdate data-updated="true">Jun 4<span>th</span>, 2014</time>
-        
-           | <a href="/blog/2014/06/04/a-microsd-card-remote-switcher/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/06/04/a-microsd-card-remote-switcher/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>Recently, I&rsquo;ve been wanting to remotely be able to program a MicroSD card with a new bootloader or filesystem <em>without</em> removing the card from its embedded target board (such as a Beaglebone or Pandaboard). Due to the lack of any such existing tools, I decided to design my own board. Finally have got it working, below are some pictures and a screencast demo video of the switcher in action! I sprinkled some power and status LED to show the user what&rsquo;s going on.</p>
+  <entry>
+    <title type="html"><![CDATA[MicroSD Card Remote Switch]]></title>
+    <link href="http://www.linuxinternals.org/blog/2014/06/04/a-microsd-card-remote-switcher/"/>
+    <updated>2014-06-04T06:12:55-05:00</updated>
+    <id>http://www.linuxinternals.org/blog/2014/06/04/a-microsd-card-remote-switcher</id>
+    <content type="html"><![CDATA[<p>Recently, I&rsquo;ve been wanting to remotely be able to program a MicroSD card with a new bootloader or filesystem <em>without</em> removing the card from its embedded target board (such as a Beaglebone or Pandaboard). Due to the lack of any such existing tools, I decided to design my own board. Finally have got it working, below are some pictures and a screencast demo video of the switcher in action! I sprinkled some power and status LED to show the user what&rsquo;s going on.</p>
 
 <p>The base board requires two <a href="https://www.sparkfun.com/products/9419">SparkFun MicroSD sniffers</a>. The card cage on the sniffer is unused for my purposes. The switcher is controlled through an <a href="https://www.sparkfun.com/products/9717">FTDI cable</a>.
 I also <a href="https://github.com/joelagnel/microsd-switch/blob/master/sw/switch.c">wrote up</a> a <code>switch</code> program to control the switcher. You just have to pass to it the FTDI&rsquo;s serial number and whether you want to switch to host-mode (for programming the card) or target-mode (for booting the programmed card).</p>
@@ -123,45 +31,15 @@ I also <a href="https://github.com/joelagnel/microsd-switch/blob/master/sw/switc
 <p>Screencast&hellip;<iframe width="100%" height="515" src="//www.youtube.com/embed/StpIihVQ7oM" frameborder="0" allowfullscreen>
 </iframe>
 Hope you enjoyed it, let me know what yout think :)</p>
-</div>
+]]></content>
+  </entry>
   
-  
-
-
-    </article>
-  
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">Linux Spinlock Internals</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2014-05-07T22:42:45-05:00" pubdate data-updated="true">May 7<span>th</span>, 2014</time>
-        
-           | <a href="/blog/2014/05/07/spinlock-implementation-in-linux-kernel/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>This article tries to clarify how spinlocks are implemented in the Linux kernel and how they should be used correctly in the face of preemption and interrupts. The focus of this article will be more on basic concepts than details, as details tend to be forgotten more easily and shouldn&rsquo;t be too hard to look up although attention is paid to it to the extent that it helps understanding.</p>
+  <entry>
+    <title type="html"><![CDATA[Linux Spinlock Internals]]></title>
+    <link href="http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel/"/>
+    <updated>2014-05-07T22:42:45-05:00</updated>
+    <id>http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel</id>
+    <content type="html"><![CDATA[<p>This article tries to clarify how spinlocks are implemented in the Linux kernel and how they should be used correctly in the face of preemption and interrupts. The focus of this article will be more on basic concepts than details, as details tend to be forgotten more easily and shouldn&rsquo;t be too hard to look up although attention is paid to it to the extent that it helps understanding.</p>
 
 <p>Fundamentally somewhere in <code>include/linux/spinlock.h</code>, a decision is made on which spinlock header to pull based on whether SMP is enabled or not:</p>
 
@@ -320,45 +198,15 @@ It is also possible that more than one process on the current CPU is trying to a
 
 
 <p>Hope this post made a few things more clear, there&rsquo;s a lot more to spinlocking. A good reference is <a href="https://www.kernel.org/pub/linux/kernel/people/rusty/kernel-locking/">Rusty&rsquo;s Unreliable Guide To Locking</a>.</p>
-</div>
+]]></content>
+  </entry>
   
-  
-
-
-    </article>
-  
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/">Studying Cache-line Sharing Effects on SMP Systems</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2014-04-24T20:28:24-05:00" pubdate data-updated="true">Apr 24<span>th</span>, 2014</time>
-        
-           | <a href="/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>Having read the chapter on counting and per-CPU counters in <a href="http://www.lulu.com/shop/paul-e-mckenney/is-parallel-programming-hard-and-if-so-what-can-you-do-about-it-first-bw-print-edition/paperback/product-21562459.html">Paul Mckenney&rsquo;s recent book</a>, I thought I would do a small experiment to check how good or bad it would be if those per-CPU counters were close to each other in memory.</p>
+  <entry>
+    <title type="html"><![CDATA[Studying Cache-line Sharing Effects on SMP Systems]]></title>
+    <link href="http://www.linuxinternals.org/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/"/>
+    <updated>2014-04-24T20:28:24-05:00</updated>
+    <id>http://www.linuxinternals.org/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems</id>
+    <content type="html"><![CDATA[<p>Having read the chapter on counting and per-CPU counters in <a href="http://www.lulu.com/shop/paul-e-mckenney/is-parallel-programming-hard-and-if-so-what-can-you-do-about-it-first-bw-print-edition/paperback/product-21562459.html">Paul Mckenney&rsquo;s recent book</a>, I thought I would do a small experiment to check how good or bad it would be if those per-CPU counters were close to each other in memory.</p>
 
 <p>Paul talks about using one global shared counter for N threads on N CPUs, and the effects it can have on the cache. Each CPU core&rsquo;s cache in an SMP system will need exclusive rights on a specific cache line of memory, before it can do the write. This means that, at any given time <em>only one</em> CPU can and should do a write to that part of memory.</p>
 
@@ -373,60 +221,30 @@ It is also possible that more than one process on the current CPU is trying to a
 <p>Below are the results of running the program on 3 different SMP systems (2 threads on 2 CPUs, sorry I don&rsquo;t have better multi-core hardware ATM):</p>
 
 <p>Effect of running on a reference ARM dual-core Cortex-A9 system:
-<img src="/images/cache-sharing/a9-counts.jpeg"></p>
+<img src="http://www.linuxinternals.org/images/cache-sharing/a9-counts.jpeg"></p>
 
 <p>Notice the jump in through-put once the separation changes from 16 to 32 bytes. That gives us a good idea that the L1 cache line size on Cortex-A9 systems is 32 bytes (8 words). Something the author didn&rsquo;t know for sure in advance (I initially thought it was 64-bytes).</p>
 
 <p>Effect of running on a reference ARM dual-core Cortex-A15 system:
-<img src="/images/cache-sharing/a15-counts.jpeg"></p>
+<img src="http://www.linuxinternals.org/images/cache-sharing/a15-counts.jpeg"></p>
 
 <p>L1 Cache-line size of Cortex A-15 is 64 bytes (8 words). Expected jump for a separation of 64 bytes.</p>
 
 <p>Effect of running on a x86-64 i7-3687U dual-core CPU:
-<img src="/images/cache-sharing/x86-counts.jpeg">.</p>
+<img src="http://www.linuxinternals.org/images/cache-sharing/x86-counts.jpeg">.</p>
 
 <p>L1 Cache-line size of this CPU is 64 bytes too (8 words). Expected jump for a separation of 64 bytes.</p>
 
 <p>This shows your parallel programs need to take care of cache-line alignment to avoid false-sharing effects. Also, doing something like this in your program is an indirect way to find out what the cache-line size is for your CPU, or a direct way to get fired, whichever way you want to look at it. ;)</p>
-</div>
+]]></content>
+  </entry>
   
-  
-
-
-    </article>
-  
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/">Design of Fork Followed by Exec in Linux</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2014-04-22T23:06:11-05:00" pubdate data-updated="true">Apr 22<span>nd</span>, 2014</time>
-        
-           | <a href="/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>A lot of folks ask <em>why do you have to do fork and then an exec, to execute a new program?</em> and <em>why can&rsquo;t it be done in one step?</em>, or <em>why does fork <a href="http://man7.org/linux/man-pages/man2/fork.2.html">create a copy-on-writed address space</a>, to only have it thrown away later when you do an exec?</em>. So I decided do a small write up about this topic.</p>
+  <entry>
+    <title type="html"><![CDATA[Design of Fork Followed by Exec in Linux]]></title>
+    <link href="http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/"/>
+    <updated>2014-04-22T23:06:11-05:00</updated>
+    <id>http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux</id>
+    <content type="html"><![CDATA[<p>A lot of folks ask <em>why do you have to do fork and then an exec, to execute a new program?</em> and <em>why can&rsquo;t it be done in one step?</em>, or <em>why does fork <a href="http://man7.org/linux/man-pages/man2/fork.2.html">create a copy-on-writed address space</a>, to only have it thrown away later when you do an exec?</em>. So I decided do a small write up about this topic.</p>
 
 <p>On a separate note, firstly it is important to remember that <code>fork</code> is not used for threading, its primary use is to create a separate process, that is a child of the parent process that called <code>fork</code>.</p>
 
@@ -492,93 +310,7 @@ There you go, now when the COW memory region is written to, a page fault happens
 <p>There is one optimization however, why should you have to do this marking for pages that are not physically present in memory? Those will fault anyway. So the above code is <em>not run</em> if the page is not present, nicely done by checking for <code>!pte_present(pte)</code> to be true before the preceding code.</p>
 
 <p>Please share any comments you may have in the comments section.</p>
-</div>
+]]></content>
+  </entry>
   
-  
-
-
-    </article>
-  
-  <div class="pagination">
-    
-    <a href="/blog/archives">Blog Archives</a>
-    
-  </div>
-</div>
-<aside class="sidebar">
-  
-    <section>
-  <h1>Recent Posts</h1>
-  <ul id="recent_posts">
-    
-      <li class="post">
-        <a href="/blog/2014/06/04/a-microsd-card-remote-switcher/">MicroSD Card Remote Switch</a>
-      </li>
-    
-      <li class="post">
-        <a href="/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">Linux Spinlock Internals</a>
-      </li>
-    
-      <li class="post">
-        <a href="/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/">Studying Cache-line Sharing Effects on SMP Systems</a>
-      </li>
-    
-      <li class="post">
-        <a href="/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/">Design of Fork Followed by Exec in Linux</a>
-      </li>
-    
-  </ul>
-</section>
-
-
-
-
-
-  
-</aside>
-
-    </div>
-  </div>
-  <footer role="contentinfo"><p>
-  Copyright &copy; 2015 - Joel Fernandes -
-  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
-</p>
-
-</footer>
-  
-
-<script type="text/javascript">
-      var disqus_shortname = 'linuxinternals1';
-      
-        
-        var disqus_script = 'count.js';
-      
-    (function () {
-      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
-      dsq.src = '//' + disqus_shortname + '.disqus.com/' + disqus_script;
-      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
-    }());
-</script>
-
-
-
-
-
-
-
-  <script type="text/javascript">
-    (function(){
-      var twitterWidgets = document.createElement('script');
-      twitterWidgets.type = 'text/javascript';
-      twitterWidgets.async = true;
-      twitterWidgets.src = '//platform.twitter.com/widgets.js';
-      document.getElementsByTagName('head')[0].appendChild(twitterWidgets);
-    })();
-  </script>
-
-
-
-
-
-</body>
-</html>
+</feed>
