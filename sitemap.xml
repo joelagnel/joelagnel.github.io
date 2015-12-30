@@ -23,6 +23,12 @@
         <lastmod>2015-11-05T11:49:22-06:00</lastmod>
     </url>
     <url>
+        <loc>
+            http://www.linuxinternals.org/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/
+        </loc>
+        <lastmod>2015-12-30T12:05:32-06:00</lastmod>
+    </url>
+    <url>
         <loc>http://www.linuxinternals.org/technical-resources/</loc>
         <lastmod>2015-11-05T10:48:47-06:00</lastmod>
     </url>
@@ -40,10 +46,10 @@
     </url>
     <url>
         <loc>http://www.linuxinternals.org/</loc>
-        <lastmod>2015-11-05T11:49:22-06:00</lastmod>
+        <lastmod>2015-12-30T12:05:32-06:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/blog/archives/</loc>
-        <lastmod>2015-11-05T11:49:22-06:00</lastmod>
+        <lastmod>2015-12-30T12:05:32-06:00</lastmod>
     </url>
 </urlset>
