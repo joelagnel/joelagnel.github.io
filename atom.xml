@@ -4,7 +4,7 @@
   <title><![CDATA[LinuxInternals.org]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2015-12-30T13:17:50-06:00</updated>
+  <updated>2016-02-15T13:04:53-08:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -16,7 +16,7 @@
   <entry>
     <title type="html"><![CDATA[Tying 2 Voltage Sources/signals Together]]></title>
     <link href="http://www.linuxinternals.org/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/"/>
-    <updated>2015-12-25T14:51:29-06:00</updated>
+    <updated>2015-12-25T12:51:29-08:00</updated>
     <id>http://www.linuxinternals.org/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together</id>
     <content type="html"><![CDATA[<p>Recently I <a href="http://electronics.stackexchange.com/questions/207492/how-are-conflicts-between-voltage-sources-or-signals-resolved/207496">asked</a> a question on StackExchange about what happens when 2 voltage signals are tied together. What&rsquo;s the resultant voltage and what decides this voltage? The whole train of thought started when I was trying to contemplate what happens when you use pull-ups on signals that are not Open Drain.</p>
 
@@ -73,7 +73,7 @@ Thanks for reading. Please leave your comments or inputs below.</p>
   <entry>
     <title type="html"><![CDATA[MicroSD Card Remote Switch]]></title>
     <link href="http://www.linuxinternals.org/blog/2014/06/04/a-microsd-card-remote-switcher/"/>
-    <updated>2014-06-04T06:12:55-05:00</updated>
+    <updated>2014-06-04T04:12:55-07:00</updated>
     <id>http://www.linuxinternals.org/blog/2014/06/04/a-microsd-card-remote-switcher</id>
     <content type="html"><![CDATA[<p>Recently, I&rsquo;ve been wanting to remotely be able to program a MicroSD card with a new bootloader or filesystem <em>without</em> removing the card from its embedded target board (such as a Beaglebone or Pandaboard). Due to the lack of any such existing tools, I decided to design my own board. Finally have got it working, below are some pictures and a screencast demo video of the switcher in action! I sprinkled some power and status LED to show the user what&rsquo;s going on.</p>
 
@@ -95,7 +95,7 @@ I also <a href="https://github.com/joelagnel/microsd-switch/blob/master/sw/switc
   <entry>
     <title type="html"><![CDATA[Linux Spinlock Internals]]></title>
     <link href="http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel/"/>
-    <updated>2014-05-07T22:42:45-05:00</updated>
+    <updated>2014-05-07T20:42:45-07:00</updated>
     <id>http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel</id>
     <content type="html"><![CDATA[<p>This article tries to clarify how spinlocks are implemented in the Linux kernel and how they should be used correctly in the face of preemption and interrupts. The focus of this article will be more on basic concepts than details, as details tend to be forgotten more easily and shouldn&rsquo;t be too hard to look up although attention is paid to it to the extent that it helps understanding.</p>
 
@@ -262,7 +262,7 @@ It is also possible that more than one process on the current CPU is trying to a
   <entry>
     <title type="html"><![CDATA[Studying Cache-line Sharing Effects on SMP Systems]]></title>
     <link href="http://www.linuxinternals.org/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/"/>
-    <updated>2014-04-24T20:28:24-05:00</updated>
+    <updated>2014-04-24T18:28:24-07:00</updated>
     <id>http://www.linuxinternals.org/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems</id>
     <content type="html"><![CDATA[<p>Having read the chapter on counting and per-CPU counters in <a href="http://www.lulu.com/shop/paul-e-mckenney/is-parallel-programming-hard-and-if-so-what-can-you-do-about-it-first-bw-print-edition/paperback/product-21562459.html">Paul Mckenney&rsquo;s recent book</a>, I thought I would do a small experiment to check how good or bad it would be if those per-CPU counters were close to each other in memory.</p>
 
@@ -300,7 +300,7 @@ It is also possible that more than one process on the current CPU is trying to a
   <entry>
     <title type="html"><![CDATA[Design of Fork Followed by Exec in Linux]]></title>
     <link href="http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/"/>
-    <updated>2014-04-22T23:06:11-05:00</updated>
+    <updated>2014-04-22T21:06:11-07:00</updated>
     <id>http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux</id>
     <content type="html"><![CDATA[<p>A lot of folks ask <em>why do you have to do fork and then an exec, to execute a new program?</em> and <em>why can&rsquo;t it be done in one step?</em>, or <em>why does fork <a href="http://man7.org/linux/man-pages/man2/fork.2.html">create a copy-on-writed address space</a>, to only have it thrown away later when you do an exec?</em>. So I decided do a small write up about this topic.</p>
 
