@@ -9,7 +9,7 @@
   <meta name="author" content="Joel Fernandes">
 
   
-  <meta name="description" content="Recently I asked a question on StackExchange about what happens when 2 voltage signals are tied together. What&rsquo;s the resultant voltage and what &hellip;">
+  <meta name="description" content="TIF_NEED_RESCHED is one of the many &ldquo;thread information flags&rdquo; stored along side every task in the Linux Kernel. One of the flags which &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -79,6 +79,127 @@
     <div id="content">
       <div class="blog-index">
   
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2016/03/20/tif-need-resched-why-is-it-needed/">TIF_NEED_RESCHED: Why Is It Needed</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2016-03-20T01:44:32-07:00" pubdate data-updated="true">Mar 20<span>th</span>, 2016</time>
+        
+           | <a href="/blog/2016/03/20/tif-need-resched-why-is-it-needed/#disqus_thread"
+             data-disqus-identifier="http://www.linuxinternals.org/blog/2016/03/20/tif-need-resched-why-is-it-needed/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p><code>TIF_NEED_RESCHED</code> is one of the many &ldquo;thread information flags&rdquo; stored along side every task in the Linux Kernel. One of the flags which is central to the working of preemption, sleeping and context switch is <code>TIF_NEED_RESCHED</code>. Inorder to explain why its so important, I will go over couple of mechanisms and explain how <code>TIF_NEED_RESCHED</code> applies to each of these cases. Let me know if I missed anything or if you have any comments in the comments box.</p>
+
+<h2>Preemption</h2>
+
+<p>Kernel Preemption is the process of forceably grabbing CPU from a user or kernel context and giving it to someone else (user or kernel). It is the primary means for timesharing a CPU between competing tasks (I will use task as terminology for process).
+In Linux, the way it works is a timer interrupt (called the tick) interrupts the task that is running and makes a decision about whether a task or a kernel code path (executing on behalf of a task like in a syscall) is to be preempted. This decision is based on whether the task has been running long-enough and something higher priority woke up and needs CPU now, or is ready to run.</p>
+
+<p>These things happen in <code>scheduler_tick()</code>, the exact path is <em>TIMER HARDWARE INTERRUPT</em> &ndash;> scheduler_tick<code>-&gt;</code>task_tick_fair<code>-&gt;</code>entity_tick<code>-&gt;</code>check_preempt_tick`.</p>
+
+<p>Here&rsquo;s a small bit of code in <code>check_preempt_tick</code></p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
+</span><span class='line'>{
+</span><span class='line'>        unsigned long ideal_runtime, delta_exec;
+</span><span class='line'>        struct sched_entity *se;
+</span><span class='line'>        s64 delta;
+</span><span class='line'>
+</span><span class='line'>        ideal_runtime = sched_slice(cfs_rq, curr);
+</span><span class='line'>        delta_exec = curr-&gt;sum_exec_runtime - curr-&gt;prev_sum_exec_runtime;
+</span><span class='line'>        if (delta_exec &gt; ideal_runtime) {
+</span><span class='line'>                resched_curr(rq_of(cfs_rq));
+</span><span class='line'>                /*
+</span><span class='line'>                 * The current task ran long enough, ensure it doesn't get
+</span><span class='line'>                 * re-elected due to buddy favours.
+</span><span class='line'>                 */
+</span><span class='line'>                clear_buddies(cfs_rq, curr);
+</span><span class='line'>                return;
+</span><span class='line'>        }</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Here you see a decision is made that the process ran long enough based on its runtime and if so call <code>resched_curr</code>. Turns out <code>resched_curr</code> sets the <code>TIF_NEED_RESCHED</code> for the current task! This informs whoever looks at the flag, that this process should be scheduled out soon.</p>
+
+<p>Even though this flag is set at this point, the task is not going to be preempted yet. This is because preemption happens at specific points such as exit of interrupts. If the flag is set because the timer interrupt decided that something of higher priority needs CPU now, then at the exit of the timer interrupt (interrupt exit path), <code>TIF_NEED_RESCHED</code> is checked, and because it is set &ndash; <code>schedule()</code> is called causing context switch to happen to another process of higher priority, instead of just returning to the process that the timer interrupted like it normally would.
+While I haven&rsquo;t nailed down the exact line of code in the interrupt exit path to user land that does this, I do believe the interrupt exit path to kernel space does a call to <code>preempt_schedule_irq</code> (see <code>arch/x86/entry/entry_64.S</code>) that checks for <code>TIF_NEED_RESCHED</code> and if it is set, then calls the context-switch code in the scheduler. These are just details though and what&rsquo;s important to understand is the <code>TIF_NEED_RESCHED</code> caused the preemption to eventually happen.</p>
+
+<h2>Critical sections in kernel code where preemption is off</h2>
+
+<p>One nice example of a code path where preemption is off is the <code>mutex_lock</code> path in the kernel. In the kernel, there is an optimization where if a mutex is already locked and not available, but if the lock owner (the task currently holding the lock) is running on another CPU, then the mutex temporarily becomes a spinlock (which means it will spin until it can get the lock) instead of behaving like a mutex (which sleeps until the lock is available). The pseudo code looks like this:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>mutex_lock() {
+</span><span class='line'>  disable_preempt();
+</span><span class='line'>  if (lock can't be acquired and the lock holding task is currently running) {
+</span><span class='line'>  while (lock_owner_running && !need_resched()) {
+</span><span class='line'>      cpu_relax();
+</span><span class='line'>  }
+</span><span class='line'>  }
+</span><span class='line'>  enable_preempt();
+</span><span class='line'>  acquire_lock_or_sleep();
+</span><span class='line'>}</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The lock path does exactly what I described. <code>cpu_relax()</code> is arch specific which is called when the CPU has to do nothing but wait. It gives hints to the CPU that it can put itself into an idle state or use its resources for someone else. For x86, it involves calling the <a href="https://en.wikipedia.org/wiki/HLT">halt instruction</a>.</p>
+
+<p>What I noticed is the Ftrace latency tracer complained about a long delay in the preempt disabled path of mutex_lock for one of my tests, and I made some <a href="http://www.spinics.net/lists/linux-rt-users/msg15022.html">noise</a> about it on the mailing list. Disabling preemption for long periods is generally a bad thing to do because during this duration, no other task can be scheduled on the CPU. However, Steven <a href="http://www.spinics.net/lists/linux-rt-users/msg15025.html">pointed out that</a> for this particular case, since we&rsquo;re checking for need_resched() and breaking out of the loop if so, we should be Ok. What would happen is, the scheduling timer interrupt (which calls <code>scheduler_tick()</code> I mentioned earlier) comes in and checks if higher priority tasks need CPU, and if they do, it sets <code>TIF_NEED_RESCHED</code>. Once the timer interrupt returns to our tightly spinning loop, we would break out of the loop having noticed <code>need_resched()</code> and, re-enable preemption as shown in the code above. Thus the long duration of preemption doesn&rsquo;t turn out to be a problem as long tasks that need CPU are prioritized correctly.</p>
+
+<p>Next time you see <code>if (need_resched())</code> in kernel code, you&rsquo;ll have a better idea why its there :). Let me know your comments if any.</p>
+</div>
+  
+  
+
+
+    </article>
   
   
     <article>
@@ -601,6 +722,10 @@ There you go, now when the COW memory region is written to, a page fault happens
   <ul id="recent_posts">
     
       <li class="post">
+        <a href="/blog/2016/03/20/tif-need-resched-why-is-it-needed/">TIF_NEED_RESCHED: Why Is It Needed</a>
+      </li>
+    
+      <li class="post">
         <a href="/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/">Tying 2 Voltage Sources/signals Together</a>
       </li>
     
@@ -614,10 +739,6 @@ There you go, now when the COW memory region is written to, a page fault happens
     
       <li class="post">
         <a href="/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/">Studying Cache-line Sharing Effects on SMP Systems</a>
-      </li>
-    
-      <li class="post">
-        <a href="/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/">Design of Fork Followed by Exec in Linux</a>
       </li>
     
   </ul>
