@@ -4,7 +4,7 @@
   <title><![CDATA[LinuxInternals.org]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2016-03-20T03:17:27-07:00</updated>
+  <updated>2016-03-20T03:20:09-07:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -25,7 +25,7 @@
 <p>Kernel Preemption is the process of forceably grabbing CPU from a user or kernel context and giving it to someone else (user or kernel). It is the primary means for timesharing a CPU between competing tasks (I will use task as terminology for process).
 In Linux, the way it works is a timer interrupt (called the tick) interrupts the task that is running and makes a decision about whether a task or a kernel code path (executing on behalf of a task like in a syscall) is to be preempted. This decision is based on whether the task has been running long-enough and something higher priority woke up and needs CPU now, or is ready to run.</p>
 
-<p>These things happen in <code>scheduler_tick()</code>, the exact path is <em>TIMER HARDWARE INTERRUPT</em> &ndash;> scheduler_tick<code>-&gt;</code>task_tick_fair<code>-&gt;</code>entity_tick<code>-&gt;</code>check_preempt_tick`.</p>
+<p>These things happen in <code>scheduler_tick()</code>, the exact path is <em>TIMER HARDWARE INTERRUPT</em> &ndash;> <code>scheduler_tick</code> &ndash;> <code>task_tick_fair</code> &ndash;> <code>entity_tick</code> &ndash;> <code>check_preempt_tick</code>.</p>
 
 <p>Here&rsquo;s a small bit of code in <code>check_preempt_tick</code></p>
 
