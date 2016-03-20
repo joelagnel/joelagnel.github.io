@@ -4,7 +4,7 @@
   <title><![CDATA[LinuxInternals.org]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2016-03-20T03:20:09-07:00</updated>
+  <updated>2016-03-20T03:23:36-07:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -18,7 +18,7 @@
     <link href="http://www.linuxinternals.org/blog/2016/03/20/tif-need-resched-why-is-it-needed/"/>
     <updated>2016-03-20T01:44:32-07:00</updated>
     <id>http://www.linuxinternals.org/blog/2016/03/20/tif-need-resched-why-is-it-needed</id>
-    <content type="html"><![CDATA[<p><code>TIF_NEED_RESCHED</code> is one of the many &ldquo;thread information flags&rdquo; stored along side every task in the Linux Kernel. One of the flags which is vital to the working of preemption, sleeping and context switch is <code>TIF_NEED_RESCHED</code>. Inorder to explain why its so important, I will go over couple of mechanisms and explain how <code>TIF_NEED_RESCHED</code> applies to each of these cases. Let me know if I missed anything or if you have any comments in the comments box.</p>
+    <content type="html"><![CDATA[<p><code>TIF_NEED_RESCHED</code> is one of the many &ldquo;thread information flags&rdquo; stored along side every task in the Linux Kernel. One of the flags which is vital to the working of preemption is <code>TIF_NEED_RESCHED</code>. Inorder to explain why its important and how it works, I will go over 2 cases where <code>TIF_NEED_RESCHED</code> is used.</p>
 
 <h2>Preemption</h2>
 
