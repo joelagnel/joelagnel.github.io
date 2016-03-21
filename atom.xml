@@ -4,7 +4,7 @@
   <title><![CDATA[LinuxInternals.org]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2016-03-20T03:23:36-07:00</updated>
+  <updated>2016-03-21T01:55:13-07:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -22,10 +22,11 @@
 
 <h2>Preemption</h2>
 
-<p>Kernel Preemption is the process of forceably grabbing CPU from a user or kernel context and giving it to someone else (user or kernel). It is the primary means for timesharing a CPU between competing tasks (I will use task as terminology for process).
+<p>Preemption is the process of forceably grabbing CPU from a user or kernel context and giving it to someone else (user or kernel). It is the means for timesharing a CPU between competing tasks (I will use task as terminology for process).
 In Linux, the way it works is a timer interrupt (called the tick) interrupts the task that is running and makes a decision about whether a task or a kernel code path (executing on behalf of a task like in a syscall) is to be preempted. This decision is based on whether the task has been running long-enough and something higher priority woke up and needs CPU now, or is ready to run.</p>
 
-<p>These things happen in <code>scheduler_tick()</code>, the exact path is <em>TIMER HARDWARE INTERRUPT</em> &ndash;> <code>scheduler_tick</code> &ndash;> <code>task_tick_fair</code> &ndash;> <code>entity_tick</code> &ndash;> <code>check_preempt_tick</code>.</p>
+<p>These things happen in <code>scheduler_tick()</code>, the exact path is <em>TIMER HARDWARE INTERRUPT</em> &ndash;> <code>scheduler_tick</code> &ndash;> <code>task_tick_fair</code> &ndash;> <code>entity_tick</code> &ndash;> <code>check_preempt_tick</code>.
+<code>entity_tick()</code> updates various run time statistics of the task, and <code>check_preempt_tick()</code> is where TIF_NEED_RESCHED is set.</p>
 
 <p>Here&rsquo;s a small bit of code in <code>check_preempt_tick</code></p>
 
@@ -67,8 +68,15 @@ In Linux, the way it works is a timer interrupt (called the tick) interrupts the
 
 <p>Here you see a decision is made that the process ran long enough based on its runtime and if so call <code>resched_curr</code>. Turns out <code>resched_curr</code> sets the <code>TIF_NEED_RESCHED</code> for the current task! This informs whoever looks at the flag, that this process should be scheduled out soon.</p>
 
-<p>Even though this flag is set at this point, the task is not going to be preempted yet. This is because preemption happens at specific points such as exit of interrupts. If the flag is set because the timer interrupt decided that something of higher priority needs CPU now, then at the exit of the timer interrupt (interrupt exit path), <code>TIF_NEED_RESCHED</code> is checked, and because it is set &ndash; <code>schedule()</code> is called causing context switch to happen to another process of higher priority, instead of just returning to the process that the timer interrupted like it normally would.
-While I haven&rsquo;t nailed down the exact line of code in the interrupt exit path to user land that does this, I do believe the interrupt exit path to kernel space does a call to <code>preempt_schedule_irq</code> (see <code>arch/x86/entry/entry_64.S</code>) that checks for <code>TIF_NEED_RESCHED</code> and if it is set, then calls the context-switch code in the scheduler. These are just details though and what&rsquo;s important to understand is the <code>TIF_NEED_RESCHED</code> caused the preemption to eventually happen.</p>
+<p>Even though this flag is set at this point, the task is not going to be preempted yet. This is because preemption happens at specific points such as exit of interrupts. If the flag is set because the timer interrupt (scheduler decided) decided that something of higher priority needs CPU now and sets <code>TIF_NEED_RESCHED</code>, then at the exit of the timer interrupt (interrupt exit path), <code>TIF_NEED_RESCHED</code> is checked, and because it is set &ndash; <code>schedule()</code> is called causing context switch to happen to another process of higher priority, instead of just returning to the existing process that the timer interrupted normally would.
+Lets examine where this happens.</p>
+
+<p>For return from interrupt to user-mode:
+If the tick interrupt happened user-mode code was running, then in somewhere in the interrupt exit path for x86, this call chain calls schedule <code>ret_from_intr</code> &ndash;> <code>reint_user</code> &ndash;> <code>prepare_exit_to_usermode</code>. Here the need_reched flag is checked, and if true <code>schedule()</code> is called.</p>
+
+<p>For return from interrupt to kernel mode, things are a bit different:
+This feature requires kernel preemption to be enabled. The call chain doing the preemption is: <code>ret_from_intr</code> &ndash;> <code>reint_kernel</code> &ndash;> <code>preempt_schedule_irq</code> (see <code>arch/x86/entry/entry_64.S</code>) which calls <code>schedule</code>.
+Note that, for return to kernel mode, I see that <code>preempt_schedule_irq</code> calls <code>schedule</code> anyway whether need_resched flag is set or not, this is probably Ok but I am wondering if need_resched should be checked here before <code>schedule</code> is called. Perhaps it would be an optimiziation to avoid unecessarily calling <code>schedule</code>. Leave your thoughts in the comments if you can explain why not.</p>
 
 <h2>Critical sections in kernel code where preemption is off</h2>
 
@@ -98,7 +106,7 @@ While I haven&rsquo;t nailed down the exact line of code in the interrupt exit p
 
 <p>The lock path does exactly what I described. <code>cpu_relax()</code> is arch specific which is called when the CPU has to do nothing but wait. It gives hints to the CPU that it can put itself into an idle state or use its resources for someone else. For x86, it involves calling the <a href="https://en.wikipedia.org/wiki/HLT">halt instruction</a>.</p>
 
-<p>What I noticed is the Ftrace latency tracer complained about a long delay in the preempt disabled path of mutex_lock for one of my tests, and I made some <a href="http://www.spinics.net/lists/linux-rt-users/msg15022.html">noise</a> about it on the mailing list. Disabling preemption for long periods is generally a bad thing to do because during this duration, no other task can be scheduled on the CPU. However, Steven <a href="http://www.spinics.net/lists/linux-rt-users/msg15025.html">pointed out that</a> for this particular case, since we&rsquo;re checking for need_resched() and breaking out of the loop if so, we should be Ok. What would happen is, the scheduling timer interrupt (which calls <code>scheduler_tick()</code> I mentioned earlier) comes in and checks if higher priority tasks need CPU, and if they do, it sets <code>TIF_NEED_RESCHED</code>. Once the timer interrupt returns to our tightly spinning loop, we would break out of the loop having noticed <code>need_resched()</code> and, re-enable preemption as shown in the code above. Thus the long duration of preemption doesn&rsquo;t turn out to be a problem as long tasks that need CPU are prioritized correctly.</p>
+<p>What I noticed is the Ftrace latency tracer complained about a long delay in the preempt disabled path of mutex_lock for one of my tests, and I made some <a href="http://www.spinics.net/lists/linux-rt-users/msg15022.html">noise</a> about it on the mailing list. Disabling preemption for long periods is generally a bad thing to do because during this duration, no other task can be scheduled on the CPU. However, Steven <a href="http://www.spinics.net/lists/linux-rt-users/msg15025.html">pointed out that</a> for this particular case, since we&rsquo;re checking for need_resched() and breaking out of the loop, we should be Ok. What would happen is, the scheduling timer interrupt (which calls <code>scheduler_tick()</code> I mentioned earlier) comes in and checks if higher priority tasks need CPU, and if they do, it sets <code>TIF_NEED_RESCHED</code>. Once the timer interrupt returns to our tightly spinning loop in mutex_lock, we would break out of the loop having noticed <code>need_resched()</code> and, re-enable preemption as shown in the code above. Thus the long duration of preemption doesn&rsquo;t turn out to be a problem as long tasks that need CPU are prioritized correctly. <code>need_resched()</code> achieved this fairness.</p>
 
 <p>Next time you see <code>if (need_resched())</code> in kernel code, you&rsquo;ll have a better idea why its there :). Let me know your comments if any.</p>
 ]]></content>
