@@ -4,7 +4,7 @@
   <title><![CDATA[LinuxInternals.org]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2016-03-21T02:00:49-07:00</updated>
+  <updated>2016-06-18T22:33:46-07:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -12,6 +12,198 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[Ftrace Events Mechanism]]></title>
+    <link href="http://www.linuxinternals.org/blog/2016/06/18/ftrace-events-mechanism/"/>
+    <updated>2016-06-18T22:29:26-07:00</updated>
+    <id>http://www.linuxinternals.org/blog/2016/06/18/ftrace-events-mechanism</id>
+    <content type="html"><![CDATA[<p>Ftrace events are a mechanism that allows different pieces of code in the kernel to &lsquo;broadcast&rsquo; events of interest. Such as a scheduler context-switch <code>sched_switch</code> for example. In the scheduler core&rsquo;s <code>__schedule</code> function, you&rsquo;ll see something like: <code>trace_sched_switch(preempt, prev, next);</code>
+This immediately results in a write to a per-cpu ring buffer storing info about what the previous task was, what the next one is, and whether the switch is happening as a result of kernel preemption (versus happening for other reasons such as a task waiting for I/O completion).</p>
+
+<p>Under the hood, these ftrace events are actually implemented using tracepoints. All ftrace events are tracepoints, but all tracepoints are not events.</p>
+
+<p>Let&rsquo;s discuss a bit about how a tracepoint works. Tracepoints are hooks that are inserted into points of code of interest and call a certain function of your choice (also known as a function probe). Inorder for the tracepoint to do anything, you have to register a function using <code>tracepoint_probe_register</code>. Multiple functions can be registered in a single hook. Once your tracepoint is hit, all functions registered to the tracepoint are executed. Also note that if no function is registered to the tracepoint, then the tracepoint is essentially a NOP with zero-overhead. Actually that&rsquo;s a lie, there is a branch (and some space) overhead only although negligible.</p>
+
+<p>Here is the heart of the code that executes when a tracepoint is hit:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>#define __DECLARE_TRACE(name, proto, args, cond, data_proto, data_args) \
+</span><span class='line'>        extern struct tracepoint __tracepoint_##name;                   \
+</span><span class='line'>        static inline void trace_##name(proto)                          \
+</span><span class='line'>        {                                                               \
+</span><span class='line'>                if (static_key_false(&__tracepoint_##name.key))         \
+</span><span class='line'>                        __DO_TRACE(&__tracepoint_##name,                \
+</span><span class='line'>                                TP_PROTO(data_proto),                   \
+</span><span class='line'>                                TP_ARGS(data_args),                     \
+</span><span class='line'>                                TP_CONDITION(cond),,);                  \
+</span><span class='line'>                if (IS_ENABLED(CONFIG_LOCKDEP) && (cond)) {             \
+</span><span class='line'>                        rcu_read_lock_sched_notrace();                  \
+</span><span class='line'>                        rcu_dereference_sched(__tracepoint_##name.funcs);\
+</span><span class='line'>                        rcu_read_unlock_sched_notrace();                \
+</span><span class='line'>                }                                                       \
+</span><span class='line'>        }                                                   </span></code></pre></td></tr></table></div></figure>
+
+
+<p>The <code>static_key_false</code> in the above code will evaluate to false if there&rsquo;s no probe registered to the tracepoint.</p>
+
+<p>Digging further, <code>__DO_TRACE</code> does the following in <code>include/linux/tracepoint.h</code></p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>#define __DO_TRACE(tp, proto, args, cond, prercu, postrcu)              \
+</span><span class='line'>        do {                                                            \
+</span><span class='line'>                struct tracepoint_func *it_func_ptr;                    \
+</span><span class='line'>                void *it_func;                                          \
+</span><span class='line'>                void *__data;                                           \
+</span><span class='line'>                                                                        \
+</span><span class='line'>                if (!(cond))                                            \
+</span><span class='line'>                        return;                                         \
+</span><span class='line'>                prercu;                                                 \
+</span><span class='line'>                rcu_read_lock_sched_notrace();                          \
+</span><span class='line'>                it_func_ptr = rcu_dereference_sched((tp)-&gt;funcs);       \
+</span><span class='line'>                if (it_func_ptr) {                                      \
+</span><span class='line'>                        do {                                            \
+</span><span class='line'>                                it_func = (it_func_ptr)-&gt;func;          \
+</span><span class='line'>                                __data = (it_func_ptr)-&gt;data;           \
+</span><span class='line'>                                ((void(*)(proto))(it_func))(args);      \
+</span><span class='line'>                        } while ((++it_func_ptr)-&gt;func);                \
+</span><span class='line'>                }                                                       \
+</span><span class='line'>                rcu_read_unlock_sched_notrace();                        \
+</span><span class='line'>                postrcu;                                                \
+</span><span class='line'>        } while (0)</span></code></pre></td></tr></table></div></figure>
+
+
+<p>There&rsquo;s a lot going on there, but main part is the loop that goes through all function pointers (probes) that were registered to the tracepoint and calls them one after the other.</p>
+
+<p>Now, here&rsquo;s some secrets. Since all ftrace events are tracepoints under the hood, you can piggy back onto interesting events in your kernel with your own probes. This allows you to write interesting tracers. Infact this is precisely how blktrace works, and also is how SystemTap hooks into ftrace events.
+<a href="https://github.com/joelagnel/joel-snips/blob/master/k-patches/cpuhists.diff">Checkout a module I wrote</a> that hooks onto <code>sched_switch</code> to build some histograms. The code there is still buggy but if you mess with it and improve it please share your work.</p>
+
+<p>Now that we know a good amount about tracepoints, ftrace events are easy.</p>
+
+<p>An ftrace event being based on tracepoints, makes full use of it but it has to do more. Ofcourse, it has to write events out to the ring buffer.
+When you enable an ftrace event using debug-fs, at that instant the ftrace events framework registers an &ldquo;event probe&rdquo; function at the tracepoint that represents the event. How? Using <code>tracepoint_probe_register</code> just as we discussed.</p>
+
+<p>The code for this is in the file <code>kernel/trace/trace_events.c</code> in function <code>trace_event_reg</code>.</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>int trace_event_reg(struct trace_event_call *call,
+</span><span class='line'>                    enum trace_reg type, void *data)
+</span><span class='line'>{
+</span><span class='line'>        struct trace_event_file *file = data;
+</span><span class='line'>
+</span><span class='line'>        WARN_ON(!(call-&gt;flags & TRACE_EVENT_FL_TRACEPOINT));
+</span><span class='line'>        switch (type) {
+</span><span class='line'>        case TRACE_REG_REGISTER:
+</span><span class='line'>                return tracepoint_probe_register(call-&gt;tp,
+</span><span class='line'>                                                 call-&gt;class-&gt;probe,
+</span><span class='line'>                                                 file);
+</span><span class='line'>...</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The probe function <code>call-&gt;class-&gt;probe</code> for trace events is defined in the file <code>include/trace/trace_events.h</code> and does the job of writing to the ring buffer. In a nutshell, the code gets a handle into the ring buffer, does assignment of the values to the entry structure and writes it out. There is some magic going on here to accomodate arbitrary number of arguments but I am yet to figure that out.</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>static notrace void                                                     \
+</span><span class='line'>trace_event_raw_event_##call(void *__data, proto)                       \
+</span><span class='line'>{                                                                       \
+</span><span class='line'>        struct trace_event_file *trace_file = __data;                   \
+</span><span class='line'>        struct trace_event_data_offsets_##call __maybe_unused __data_offsets;\
+</span><span class='line'>        struct trace_event_buffer fbuffer;                              \
+</span><span class='line'>        struct trace_event_raw_##call *entry;                           \
+</span><span class='line'>        int __data_size;                                                \
+</span><span class='line'>                                                                        \
+</span><span class='line'>        if (trace_trigger_soft_disabled(trace_file))                    \
+</span><span class='line'>                return;                                                 \
+</span><span class='line'>                                                                        \
+</span><span class='line'>        __data_size = trace_event_get_offsets_##call(&__data_offsets, args); \
+</span><span class='line'>                                                                        \
+</span><span class='line'>        entry = trace_event_buffer_reserve(&fbuffer, trace_file,        \
+</span><span class='line'>                                 sizeof(*entry) + __data_size);         \
+</span><span class='line'>                                                                        \
+</span><span class='line'>        if (!entry)                                                     \
+</span><span class='line'>                return;                                                 \
+</span><span class='line'>                                                                        \
+</span><span class='line'>        tstruct                                                         \
+</span><span class='line'>                                                                        \
+</span><span class='line'>        { assign; }                                                     \
+</span><span class='line'>                                                                        \
+</span><span class='line'>        trace_event_buffer_commit(&fbuffer);                            \
+</span><span class='line'>}</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Let me know any comments you have or any other ftrace event behavior you&rsquo;d like explained.</p>
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[TIF_NEED_RESCHED: Why Is It Needed]]></title>
