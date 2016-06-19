@@ -4,7 +4,7 @@
   <title><![CDATA[LinuxInternals.org]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2016-06-18T23:15:47-07:00</updated>
+  <updated>2016-06-19T12:43:49-07:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -21,7 +21,7 @@
     <content type="html"><![CDATA[<p>Ftrace events are a mechanism that allows different pieces of code in the kernel to &lsquo;broadcast&rsquo; events of interest. Such as a scheduler context-switch <code>sched_switch</code> for example. In the scheduler core&rsquo;s <code>__schedule</code> function, you&rsquo;ll see something like: <code>trace_sched_switch(preempt, prev, next);</code>
 This immediately results in a write to a per-cpu ring buffer storing info about what the previous task was, what the next one is, and whether the switch is happening as a result of kernel preemption (versus happening for other reasons such as a task waiting for I/O completion).</p>
 
-<p>Under the hood, these ftrace events are actually implemented using tracepoints. All ftrace events are tracepoints, but all tracepoints are not events.</p>
+<p>Under the hood, these ftrace events are actually implemented using tracepoints. The terms events are tracepoints appear to be used interchangeably, but it appears one could use a trace point if desired without having to do anything with ftrace. Events on the other hand use ftrace.</p>
 
 <p>Let&rsquo;s discuss a bit about how a tracepoint works. Tracepoints are hooks that are inserted into points of code of interest and call a certain function of your choice (also known as a function probe). Inorder for the tracepoint to do anything, you have to register a function using <code>tracepoint_probe_register</code>. Multiple functions can be registered in a single hook. Once your tracepoint is hit, all functions registered to the tracepoint are executed. Also note that if no function is registered to the tracepoint, then the tracepoint is essentially a NOP with zero-overhead. Actually that&rsquo;s a lie, there is a branch (and some space) overhead only although negligible.</p>
 
