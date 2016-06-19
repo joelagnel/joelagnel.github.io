@@ -4,7 +4,7 @@
   <title><![CDATA[LinuxInternals.org]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2016-06-18T22:39:26-07:00</updated>
+  <updated>2016-06-18T23:15:47-07:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -307,7 +307,7 @@ Note that, for return to kernel mode, I see that <code>preempt_schedule_irq</cod
   </entry>
   
   <entry>
-    <title type="html"><![CDATA[Tying 2 Voltage Sources/signals Together]]></title>
+    <title type="html"><![CDATA[Resolving Voltage Conflicts: Theory and Simulation]]></title>
     <link href="http://www.linuxinternals.org/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/"/>
     <updated>2015-12-25T12:51:29-08:00</updated>
     <id>http://www.linuxinternals.org/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together</id>
