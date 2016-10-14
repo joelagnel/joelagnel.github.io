@@ -4,62 +4,62 @@
         <loc>
             http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/
         </loc>
-        <lastmod>2015-11-05T08:48:47-08:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>
             http://www.linuxinternals.org/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/
         </loc>
-        <lastmod>2015-11-05T08:48:47-08:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>
             http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel/
         </loc>
-        <lastmod>2015-11-05T08:48:47-08:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/blog/2014/06/04/a-microsd-card-remote-switcher/</loc>
-        <lastmod>2015-11-05T09:49:22-08:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>
             http://www.linuxinternals.org/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/
         </loc>
-        <lastmod>2016-06-18T23:15:43-07:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>
             http://www.linuxinternals.org/blog/2016/03/20/tif-need-resched-why-is-it-needed/
         </loc>
-        <lastmod>2016-03-21T02:00:40-07:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/blog/2016/06/18/ftrace-events-mechanism/</loc>
-        <lastmod>2016-06-19T12:43:37-07:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/technical-resources/</loc>
-        <lastmod>2016-10-13T21:50:21-07:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/robots.txt</loc>
-        <lastmod>2015-11-05T08:48:47-08:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/meetup/</loc>
-        <lastmod>2015-12-20T15:32:05-08:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/aboutme/</loc>
-        <lastmod>2015-12-20T15:31:55-08:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/</loc>
-        <lastmod>2016-06-19T12:43:37-07:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/blog/archives/</loc>
-        <lastmod>2016-06-19T12:43:37-07:00</lastmod>
+        <lastmod>2016-10-13T22:01:04-07:00</lastmod>
     </url>
 </urlset>
