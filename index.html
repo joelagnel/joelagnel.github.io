@@ -9,7 +9,7 @@
   <meta name="author" content="Joel Fernandes">
 
   
-  <meta name="description" content="Ftrace events are a mechanism that allows different pieces of code in the kernel to &lsquo;broadcast&rsquo; events of interest. Such as a scheduler &hellip;">
+  <meta name="description" content="Non-maskable interrupts (NMI) is a great debug feature that hardware can provide. Some great Linux kernel features that rely on NMI to work properly &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -95,6 +95,79 @@
     <div id="content">
       <div class="blog-index">
   
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2016/12/31/nmi-perf-armv8/">ARMv8 and NMI Support</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2016-12-31T21:29:26-08:00" pubdate data-updated="true">Dec 31<span>st</span>, 2016</time>
+        
+           | <a href="/blog/2016/12/31/nmi-perf-armv8/#disqus_thread"
+             data-disqus-identifier="http://www.linuxinternals.org/blog/2016/12/31/nmi-perf-armv8/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p>Non-maskable interrupts (NMI) is a great debug feature that hardware can provide. Some great Linux kernel features that rely on NMI to work properly are:</p>
+
+<ul>
+<li><p>Backtrace from all CPUs: A number of places in the kernel rely on dumping the stacks of all CPUs at the time of a failure to determine what was going on. Some of them are <a href="http://lxr.free-electrons.com/source/kernel/hung_task.c">Hung Task detection</a>, <a href="http://lxr.free-electrons.com/source/Documentation/lockup-watchdogs.txt">Hard/soft lockup detector</a> and spinlock debugging code.</p></li>
+<li><p>Perf profiling: To be able to profile code that runs in interrupt handlers, or in sections of code that disable interrupts, Perf works well only when NMI is available in the architecture.</p></li>
+</ul>
+
+
+<p>Below is a <a href="http://www.brendangregg.com/FlameGraphs/cpuflamegraphs.html">flamegraph</a> generated with perf and some flamegraph magic, that shows just what happens when perf is used in an architecture like ARM that doesn&rsquo;t support NMI. The flamegraph is generated on an ARMv8 platform:</p>
+
+<p><img src="/images/nmi/flamegraph.png"></p>
+
+<p>As you can see in the area of the flamegraph where the arrow is pointed, a large amount of time is spent in <code>_raw_spin_unlock_irqrestore()</code>. It can baffle anyone looking at this data for the first time, and make them think that most of the time is spent in this function. What&rsquo;s actually happenning is because perf is using a maskable interrupt in ARMv8 to profile, any section of code that disables interrupts will not be see in the flamegraph. In other words perf is unable to peek into sections of code where interrupts are disabled. As a result, when interrupts are reenabled during the <code>_raw_spin_unlock_irqrestore</code>, the perf interrupt routine then kicks in and records the large number of samples that elapsed in the interrupt-disable section. This recording accounts all these samples to the _raw_spin_unlock_restore function, hence the flamegraph anomoly. It is indeed quite sad that ARM still doesn&rsquo;t have a true NMI which perf would love to make use of.</p>
+
+<p>BUT! <a href="https://lkml.org/lkml/2016/8/19/583">Daniel Thomspon</a> has been hard at work trying to simulate Non-maskable interrupts on ARMv8. The idea is <a href="/misc/arm-irq-priortization-white-paper.pdf">based on using interrupt priorities</a> and is the subject of the rest of this post.</p>
+
+<p>To simulate an NMI, Daniel creates 2 groups of interrupts in his patchset. One group is for all &lsquo;normal&rsquo; interrupts, and the other for non-maskable interrupts (NMI). Non-maskable interrupts are assigned a higher priority than the normal interrupt group. Inorder to &lsquo;mask&rsquo; interrupts in this approach, Daniel replaces the regular interrupt masking scheme in the kernel which happens at the CPU-core level, with setting of the interrupt controller&rsquo;s PMR (priority mask register). When the PMR is set to a certain value, only interrupts which have a higher priority than what&rsquo;s in the PMR will be signaled to a CPU core, all other interrupts will be silenced (masked). By using this technique, it is possible to mask normal interrupts while keeping the NMI unmasked all the time.</p>
+
+<p>Just how does he do this? So, a small primer on interrupts in the ARM world.
+ARM uses the GIC <a href="http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dai0176c/ar01s03s01.html">Generic interrupt controller</a> to prioritize and route interrupts to CPU cores. GIC interrupt priorties go from 0 to 255. 0 being highest and 255 being the lowest. By default, the kernel <a href="http://lxr.free-electrons.com/source/include/linux/irqchip/arm-gic.h?v=4.8#L57">assigns priority 0xa0 (192)</a> to all interrupts. He changes this default priority from 0xa0 to 0xc0 (you&rsquo;ll see why).
+He then defines what values of PMR would be consider as &ldquo;unmasked&rdquo; vs &ldquo;masked&rdquo;. Masked is 0xb0 and unmasked is 0xf0. This results in the following priorities (greater numbers are lower priority).</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>0xf0 (240 decimal)  (11110000 binary) - Interrupts Unmasked (enabled)
+</span><span class='line'>0xc0 (192 decimal)  (11000000 binary) - Normal interrupt priority
+</span><span class='line'>0xb0 (176 decimal)  (10110000 binary) - Interrupts masked   (disabled)
+</span><span class='line'>0x80 (128 decimal)  (10000000 binary) - Non-maskable interrupts</span></code></pre></td></tr></table></div></figure>
+
+
+<p>In this new scheme, when interrupts are to be masked (disabled), the PMR is set to 0xf0 and when they are unmasked (enabled), the PMR is set to 0xb0. As you can see, setting the PMR to 0xb0 indeed masks normal interrupts, because 0xb0(PMR) &lt; 0xc0(Normal), however non-maskable interrupts still stay unmasked as 0x80(NMI) &lt; 0xb0(PMR). Also notice that inorder to mask/unmask interrupts, all that needs to be done is flip bit 7 in the PMR (0xb0 &ndash;> 0xf0). Daniel largely uses Bit 7 as the mask bit in the patchset.</p>
+
+<p>Daniel has tested his patchset only on the foundation model yet, but it appears that the patch series with modifications should work on the newer Qualcomm chipsets that have the necessary GIC (Generic interrupt controller) access from the core to muck with IRQ priorities. Also, currently Daniel has only implemented CPU backtrace, more work needs to be done for perf support which I&rsquo;ll look into if I can get backtraces working properly on real silicon first.</p>
+</div>
+  
+  
+
+
+    </article>
   
   
     <article>
@@ -449,515 +522,9 @@ Note that, for return to kernel mode, I see that <code>preempt_schedule_irq</cod
 
     </article>
   
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/">Tying 2 Voltage Sources/signals Together</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2015-12-25T12:51:29-08:00" pubdate data-updated="true">Dec 25<span>th</span>, 2015</time>
-        
-           | <a href="/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>Recently I <a href="http://electronics.stackexchange.com/questions/207492/how-are-conflicts-between-voltage-sources-or-signals-resolved/207496">asked</a> a question on StackExchange about what happens when 2 voltage signals are tied together. What&rsquo;s the resultant voltage and what decides this voltage? The whole train of thought started when I was trying to contemplate what happens when you use pull-ups on signals that are not Open Drain.</p>
-
-<p>I create and simulated a Circuit with the same scenario in LTSpice. &ldquo;V&rdquo; is the voltage between the &ldquo;+&rdquo; terminals of V1 and V2 and its shown on the right of the simulation. We will confirm the simulation result by doing some math later.<img src="/images/voltage-conflict/voltage-conflict-1.png"></p>
-
-<p>The question is what is the voltage across the load after hooking them up together. And what do the currents look like? Is there a current flowing between the 2 sources as well (apart from the current flowing to the load) because 5v > 1.8v?
-The simulator refuses to do a simulation without your author adding an internal resistance to the voltage sources first. All voltages sources have certain internal resistances, so that&rsquo;s fair. This can be considered analogous to having a voltage signal with a certain resistance along its path which limits its current sourcing (or sinking) capabilities.</p>
-
-<p>So I added 1k resistances internally, normally the resistance of a voltage source is far less than this. AA batteries have just 0.1-0.2ohms.
-Now the circuit looks something like this: <img src="/images/voltage-conflict/voltage-conflict-2.png"></p>
-
-<p>One can simply apply <a href="https://en.wikipedia.org/wiki/Kirchhoff%27s_circuit_laws#Kirchhoff.27s_current_law_.28KCL.29">Kirchoff&rsquo;s current law</a> to the above circuit, the direction of currents would be as in the circuit. I1 and I2 are the currents flowing through R2 and R1 respectively.</p>
-
-<p>By Kirchoff&rsquo;s law, All the current entering the node labeled V will be equal to the current exiting it even if the currents are not in the actual direction shown above. From this we see:</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>I1 = (1.8 - V) / 1k
-</span><span class='line'>I2 = (5 - V)   / 1k
-</span><span class='line'>I3 = (V - 0)   / 10k
-</span><span class='line'>
-</span><span class='line'>I3 = I2 + I1
-</span><span class='line'>V / 10k  = ((1.8 - V) / 1k) + ((5 - V) / 1k)
-</span><span class='line'>V = 3.2381v</span></code></pre></td></tr></table></div></figure>
-
-
-<p>Fom this we see the voltage at V is somewhere between 5 and 1.8v. Infact, where it is between 5 and 1.8 depends on how strong or weak the resistances associated with the sources are. If the resistances are lower, then the sources have more of an influence and vice versa. An interesting observation is I1 is negative if you plug V=3.2v in the above equation. This means the current for voltage source V2 (the 1.8v voltage source) is actually flowing into it rather than out of it (its being sinked) and so I1 is actually opposite in direction to the picture shown above.</p>
-
-<p>A simpler case is having 2 voltage sources of the exact same voltage values, in this case the circuit would look like:<img src="/images/voltage-conflict/voltage-conflict-3.png"></p>
-
-<p><a href="https://en.wikipedia.org/wiki/Th%C3%A9venin%27s_theorem">Thevenin&rsquo;s theorem</a>  provides an easy simplication into the following, where the equivalent voltage source value is the same but the series resistance is now halved. This results in the following circuit:
-<img src="/images/voltage-conflict/voltage-conflict-4.png"></p>
-
-<p>Now you can use the <a href="https://en.wikipedia.org/wiki/Voltage_divider">Voltage divider</a> concept and easily solve this:</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>V = V2 * (R2 / (R1 + R2) )
-</span><span class='line'>  = 1.8v * ( 10k / (10k + 0.5k) )
-</span><span class='line'>  = 1.7142v</span></code></pre></td></tr></table></div></figure>
-
-
-<p>As you would notice, the 1k resistance dropped around 0.085v of voltage before getting to the 10k load.
-Thanks for reading. Please leave your comments or inputs below.</p>
-</div>
-  
-  
-
-
-    </article>
-  
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2014/06/04/a-microsd-card-remote-switcher/">MicroSD Card Remote Switch</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2014-06-04T04:12:55-07:00" pubdate data-updated="true">Jun 4<span>th</span>, 2014</time>
-        
-           | <a href="/blog/2014/06/04/a-microsd-card-remote-switcher/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/06/04/a-microsd-card-remote-switcher/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>Recently, I&rsquo;ve been wanting to remotely be able to program a MicroSD card with a new bootloader or filesystem <em>without</em> removing the card from its embedded target board (such as a Beaglebone or Pandaboard). Due to the lack of any such existing tools, I decided to design my own board. Finally have got it working, below are some pictures and a screencast demo video of the switcher in action! I sprinkled some power and status LED to show the user what&rsquo;s going on.</p>
-
-<p>The base board requires two <a href="https://www.sparkfun.com/products/9419">SparkFun MicroSD sniffers</a>. The card cage on the sniffer is unused for my purposes. The switcher is controlled through an <a href="https://www.sparkfun.com/products/9717">FTDI cable</a>.
-I also <a href="https://github.com/joelagnel/microsd-switch/blob/master/sw/switch.c">wrote up</a> a <code>switch</code> program to control the switcher with libftdi. You just have to pass to it the FTDI&rsquo;s serial number and whether you want to switch to host-mode (for programming the card) or target-mode (for booting the programmed card).
-<a href="https://github.com/joelagnel/microsd-switch">Hardware design files</a> are available under a CC-BY-NC-SA 3.0 license.</p>
-
-<p>Screencast<iframe width="100%" height="515" src="http://www.youtube.com/embed/StpIihVQ7oM " frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe></p>
-
-<p>Pictures
-<img src="https://raw.githubusercontent.com/joelagnel/microsd-switch/master/board-pics/microsd-inaction/photo5.jpg">
-<img src="https://raw.githubusercontent.com/joelagnel/microsd-switch/master/board-pics/microsd-inaction/photo2.jpg">
-<img src="https://raw.githubusercontent.com/joelagnel/microsd-switch/master/board-pics/front.png"></p>
-
-<p>Hope you enjoyed it, let me know what yout think in the comments:)</p>
-</div>
-  
-  
-
-
-    </article>
-  
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">Linux Spinlock Internals</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2014-05-07T20:42:45-07:00" pubdate data-updated="true">May 7<span>th</span>, 2014</time>
-        
-           | <a href="/blog/2014/05/07/spinlock-implementation-in-linux-kernel/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>This article tries to clarify how spinlocks are implemented in the Linux kernel and how they should be used correctly in the face of preemption and interrupts. The focus of this article will be more on basic concepts than details, as details tend to be forgotten more easily and shouldn&rsquo;t be too hard to look up although attention is paid to it to the extent that it helps understanding.</p>
-
-<p>Fundamentally somewhere in <code>include/linux/spinlock.h</code>, a decision is made on which spinlock header to pull based on whether SMP is enabled or not:</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>#if defined(CONFIG_SMP) || defined(CONFIG_DEBUG_SPINLOCK)
-</span><span class='line'># include &lt;linux/spinlock_api_smp.h&gt;
-</span><span class='line'>#else
-</span><span class='line'># include &lt;linux/spinlock_api_up.h&gt;
-</span><span class='line'>#endif</span></code></pre></td></tr></table></div></figure>
-
-
-<p>We&rsquo;ll go over how things are implemented in both the SMP (Symmetric Multi-Processor) and UP (Uni-Processor) cases.</p>
-
-<p>For the SMP case, <code>__raw_spin_lock*</code> functions in <code>kernel/locking/spinlock.c</code> are called when one calls some version of a <code>spin_lock</code>.</p>
-
-<p>Following is the definition of the most basic version defined with a macro:</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-<span class='line-number'>8</span>
-<span class='line-number'>9</span>
-<span class='line-number'>10</span>
-<span class='line-number'>11</span>
-<span class='line-number'>12</span>
-<span class='line-number'>13</span>
-<span class='line-number'>14</span>
-<span class='line-number'>15</span>
-<span class='line-number'>16</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>#define BUILD_LOCK_OPS(op, locktype)                                    \
-</span><span class='line'>void __lockfunc __raw_##op##_lock(locktype##_t *lock)                   \
-</span><span class='line'>{                                                                       \
-</span><span class='line'>        for (;;) {                                                      \
-</span><span class='line'>                preempt_disable();                                      \
-</span><span class='line'>                if (likely(do_raw_##op##_trylock(lock)))                \
-</span><span class='line'>                        break;                                          \
-</span><span class='line'>                preempt_enable();                                       \
-</span><span class='line'>                                                                        \
-</span><span class='line'>                if (!(lock)-&gt;break_lock)                                \
-</span><span class='line'>                        (lock)-&gt;break_lock = 1;                         \
-</span><span class='line'>                while (!raw_##op##_can_lock(lock) && (lock)-&gt;break_lock)\
-</span><span class='line'>                        arch_##op##_relax(&lock-&gt;raw_lock);             \
-</span><span class='line'>        }                                                               \
-</span><span class='line'>        (lock)-&gt;break_lock = 0;                                         \
-</span><span class='line'>}                                                                       \</span></code></pre></td></tr></table></div></figure>
-
-
-<p>The function has several imporant bits. First it disables preemption on line 5, then tries to <em>atomically</em> acquire the spinlock on line 6. If it succeeds it breaks from the <code>for</code> loop on line 7, leaving preemption disabled for the duration of crticial section being protected by the lock. If it didn&rsquo;t succeed in acquiring the lock (maybe some other CPU grabbed the lock already), it enables preemption back and spins till it can acquire the lock keeping <em>preemption enabled during this period</em>. Each time it detects that the lock can&rsquo;t be acquired in the <code>while</code> loop, it calls an architecture specific relax function which has the effect executing some variant of a <code>no-operation</code> instruction that causes the CPU to execute such an instruction efficiently in a lower power state. We&rsquo;ll talk about the <code>break_lock</code> usage in a bit. Soon as it knows the lock is free, say the <code>raw_spin_can_lock(lock)</code> function returned 1, it goes back to the beginning of the <code>for</code> loop and tries to acquire the lock again.</p>
-
-<p>What&rsquo;s important to note here is the reason for keeping preemption enabled (we&rsquo;ll see in a bit that for UP configurations, this is not done). While the kernel is spinning on a lock, other processes shouldn&rsquo;t be kept from preempting the spinning thread. The lock in these cases have been acquired on a <em>different CPU</em> because (assuming bug free code) it&rsquo;s impossible the current CPU which is trying to grab the lock has already acquired it, because preemption is disabled on acquiral. So it makes sense for the spinning kernel thread to be preempted giving others CPU time.
-It is also possible that more than one process on the current CPU is trying to acquire the same lock and spinning on it, in this case the kernel gets continuously preempted between the 2 threads fighting for the lock, while some other CPU in the cluster happily holds the lock, hopefully for not too long.</p>
-
-<p>That&rsquo;s where the <code>break_lock</code> element in the lock structure comes in. Its used to signal to the lock-holding processor in the cluster that there is someone else trying to acquire the lock. This can cause the lock to released early by the holder if required.</p>
-
-<p>Now lets see what happens in the UP (Uni-Processor) case.</p>
-
-<p>Believe it or not, it&rsquo;s really this simple:</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-<span class='line-number'>8</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>#define ___LOCK(lock) \
-</span><span class='line'>  do { __acquire(lock); (void)(lock); } while (0)
-</span><span class='line'>
-</span><span class='line'>#define __LOCK(lock) \
-</span><span class='line'>  do { preempt_disable(); ___LOCK(lock); } while (0)
-</span><span class='line'>
-</span><span class='line'>// ....skipped some lines.....
-</span><span class='line'>#define _raw_spin_lock(lock)                    __LOCK(lock)</span></code></pre></td></tr></table></div></figure>
-
-
-<p>All that needs to be done is to disable preemption and acquire the lock. The code really doesn&rsquo;t do anything other than disable preemption. The references to the <code>lock</code> variable are just to suppress compiler warnings as mentioned in comments in the source file.</p>
-
-<p>There&rsquo;s no spinning at all here like the UP case and the reason is simple: in the SMP case, remember we had agreed that while a lock is <em>acquired</em> by a particular CPU (in this case just the 1 CPU), no other process on that CPU should have acquired the lock. How could it have gotten a chance to do so with preemption disabled on that CPU to begin with?</p>
-
-<p>Even if the code is buggy, (say the same process tries to acquires the lock twice), it&rsquo;s still impossible that 2 <em>different processes</em> try to acquire the same lock on a Uni-Processor system considering preemption is disabled on lock acquiral. Following that idea, in the Uni-processor case, since we are running on only 1 CPU, all that needs to be done is to disable preemption, since the fact that we are being allowed to disable preemption to begin with, means that no one else has acquired the lock. Works really well!</p>
-
-<h2>Sharing spinlocks between interrupt and process-context</h2>
-
-<p>It is possible that a critical section needs to be protected by the same lock in both an interrupt and in non-interrupt (process) execution context in the kernel. In this case <code>spin_lock_irqsave</code> and the <code>spin_unlock_irqrestore</code> variants have to be used to protect the critical section. This has the effect of disabling interrupts on the  executing CPU. Imagine what would happen if you just used <code>spin_lock</code> in the process context?</p>
-
-<p>Picture the following:</p>
-
-<ol>
-<li>Process context kernel code acquires <em>lock A</em> using <code>spin_lock</code>.</li>
-<li>While the lock is held, an interrupt comes in on the same CPU and executes.</li>
-<li>Interrupt Service Routing (ISR) tries to acquire <em>lock A</em>, and spins continuously waiting for it.</li>
-<li>For the duration of the ISR, the Process context is blocked and never gets a chance to run and free the lock.</li>
-<li>Hard lock up condition on the CPU!</li>
-</ol>
-
-
-<p>To prevent this, the process context code needs call <code>spin_lock_irqsave</code> which has the effect of disabling interrupts on that particular CPU along with the regular disabling of preemption we saw earlier <em>before</em> trying to grab the lock.</p>
-
-<p>Note that the ISR can still just call <code>spin_lock</code> instead of <code>spin_lock_irqsave</code> because interrupts are disabled anyway during ISR execution. Often times people use <code>spin_lock_irqsave</code> in an ISR, that&rsquo;s not necessary.</p>
-
-<p>Also note that during the executing of the critical section protected by <code>spin_lock_irqsave</code>, the interrupts are only disabled on the executing CPU. The same interrupt can come in on a different CPU and the ISR will be executed there, but that will not trigger the hard lock condition I talked about, because the process-context code is not blocked and can finish executing the locked critical section and release the lock while the ISR spins on the lock on a different CPU waiting for it. The process context does get a chance to finish and free the lock causing no hard lock up.</p>
-
-<p>Following is what the <code>spin_lock_irqsave</code> code looks like for the SMP case, UP case is similar, look it up. BTW, the only difference here compared to the regular <code>spin_lock</code> I described in the beginning are the <code>local_irq_save</code> and <code>local_irq_restore</code> that accompany the <code>preempt_disable</code> and <code>preempt_enable</code> in the lock code:</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-<span class='line-number'>8</span>
-<span class='line-number'>9</span>
-<span class='line-number'>10</span>
-<span class='line-number'>11</span>
-<span class='line-number'>12</span>
-<span class='line-number'>13</span>
-<span class='line-number'>14</span>
-<span class='line-number'>15</span>
-<span class='line-number'>16</span>
-<span class='line-number'>17</span>
-<span class='line-number'>18</span>
-<span class='line-number'>19</span>
-<span class='line-number'>20</span>
-<span class='line-number'>21</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>#define BUILD_LOCK_OPS(op, locktype)                                    \
-</span><span class='line'>unsigned long __lockfunc __raw_##op##_lock_irqsave(locktype##_t *lock)  \
-</span><span class='line'>{                                                                       \
-</span><span class='line'>        unsigned long flags;                                            \
-</span><span class='line'>                                                                        \
-</span><span class='line'>        for (;;) {                                                      \
-</span><span class='line'>                preempt_disable();                                      \
-</span><span class='line'>                local_irq_save(flags);                                  \
-</span><span class='line'>                if (likely(do_raw_##op##_trylock(lock)))                \
-</span><span class='line'>                        break;                                          \
-</span><span class='line'>                local_irq_restore(flags);                               \
-</span><span class='line'>                preempt_enable();                                       \
-</span><span class='line'>                                                                        \
-</span><span class='line'>                if (!(lock)-&gt;break_lock)                                \
-</span><span class='line'>                        (lock)-&gt;break_lock = 1;                         \
-</span><span class='line'>                while (!raw_##op##_can_lock(lock) && (lock)-&gt;break_lock)\
-</span><span class='line'>                        arch_##op##_relax(&lock-&gt;raw_lock);             \
-</span><span class='line'>        }                                                               \
-</span><span class='line'>        (lock)-&gt;break_lock = 0;                                         \
-</span><span class='line'>        return flags;                                                   \
-</span><span class='line'>}                                                                       \</span></code></pre></td></tr></table></div></figure>
-
-
-<p>Hope this post made a few things more clear, there&rsquo;s a lot more to spinlocking. A good reference is <a href="https://www.kernel.org/pub/linux/kernel/people/rusty/kernel-locking/">Rusty&rsquo;s Unreliable Guide To Locking</a>.</p>
-</div>
-  
-  
-
-
-    </article>
-  
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/">Studying Cache-line Sharing Effects on SMP Systems</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2014-04-24T18:28:24-07:00" pubdate data-updated="true">Apr 24<span>th</span>, 2014</time>
-        
-           | <a href="/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>Having read the chapter on counting and per-CPU counters in <a href="http://www.lulu.com/shop/paul-e-mckenney/is-parallel-programming-hard-and-if-so-what-can-you-do-about-it-first-bw-print-edition/paperback/product-21562459.html">Paul Mckenney&rsquo;s recent book</a>, I thought I would do a small experiment to check how good or bad it would be if those per-CPU counters were close to each other in memory.</p>
-
-<p>Paul talks about using one global shared counter for N threads on N CPUs, and the effects it can have on the cache. Each CPU core&rsquo;s cache in an SMP system will need exclusive rights on a specific cache line of memory, before it can do the write. This means that, at any given time <em>only one</em> CPU can and should do a write to that part of memory.</p>
-
-<p>This is accomplished typically by an invalidate protocol, where each CPU needs to do some inter-processor communication before it can assume it has exclusive access to that cache line, and also read any copies that may still be in some other core&rsquo;s cache and not in main memory. This is an expensive operation that is to be avoided at all costs!</p>
-
-<p>Then Paul goes about saying, OK- let&rsquo;s have a per-thread counter, and have each core increment it independently, and when we need a read out, we would grab a lock and add all of the individual counters together. This works great, assuming each per-thread counter is separated by atleast a cache line. That&rsquo;s guaranteed, when one uses the <code>__thread</code> primitive nicely separating out the memory to reduce cache line sharing effects.</p>
-
-<p>So I decided to flip this around, and have per-thread counters that were closely spaced and do some counting with them. Instead of using <code>__thread</code>, I created an array of counters, each element belonging to some thread. The counters are still separate and not shared, but they may still be in shared cache-line causing the nasty effects we talked about, which I wanted to measure.</p>
-
-<p><a href="https://github.com/joelagnel/smp-experiments/blob/05afb2db4fea1c6c0b4614c180186c10627a341a/cache-sharing.c">My program</a> sets up N counting threads, and assumes its running each of them on a single core on typical multicore system.  Various iterations of per-thread counting is done, with the counters separated by increasing powers of 2 each iteration. After each iteration, I stop all threads, add the per-thread counter values and report the result.</p>
-
-<p>Below are the results of running the program on 3 different SMP systems (2 threads on 2 CPUs, sorry I don&rsquo;t have better multi-core hardware ATM):</p>
-
-<p>Effect of running on a reference ARM dual-core Cortex-A9 system:
-<img src="/images/cache-sharing/a9-counts.jpeg"></p>
-
-<p>Notice the jump in through-put once the separation changes from 16 to 32 bytes. That gives us a good idea that the L1 cache line size on Cortex-A9 systems is 32 bytes (8 words). Something the author didn&rsquo;t know for sure in advance (I initially thought it was 64-bytes).</p>
-
-<p>Effect of running on a reference ARM dual-core Cortex-A15 system:
-<img src="/images/cache-sharing/a15-counts.jpeg"></p>
-
-<p>L1 Cache-line size of Cortex A-15 is 64 bytes (8 words). Expected jump for a separation of 64 bytes.</p>
-
-<p>Effect of running on a x86-64 i7-3687U dual-core CPU:
-<img src="/images/cache-sharing/x86-counts.jpeg">.</p>
-
-<p>L1 Cache-line size of this CPU is 64 bytes too (8 words). Expected jump for a separation of 64 bytes.</p>
-
-<p>This shows your parallel programs need to take care of cache-line alignment to avoid false-sharing effects. Also, doing something like this in your program is an indirect way to find out what the cache-line size is for your CPU, or a direct way to get fired, whichever way you want to look at it. ;)</p>
-</div>
-  
-  
-
-
-    </article>
-  
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/">Design of Fork Followed by Exec in Linux</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2014-04-22T21:06:11-07:00" pubdate data-updated="true">Apr 22<span>nd</span>, 2014</time>
-        
-           | <a href="/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>A lot of folks ask <em>why do you have to do fork and then an exec, to execute a new program?</em> and <em>why can&rsquo;t it be done in one step?</em>, or <em>why does fork <a href="http://man7.org/linux/man-pages/man2/fork.2.html">create a copy-on-writed address space</a>, to only have it thrown away later when you do an exec?</em>. So I decided do a small write up about this topic.</p>
-
-<p>On a separate note, firstly it is important to remember that <code>fork</code> is not used for threading, its primary use is to create a separate process, that is a child of the parent process that called <code>fork</code>.</p>
-
-<p>Normally one might think that doing a <code>fork</code> and separate <code>exec</code> can be combined in one step, and it probably should be. But there are applications of maintaining this separation. Here&rsquo;s a <a href="http://stackoverflow.com/questions/1345320/applications-of-fork-system-call">post that explains</a> why you might need to do just a <code>fork</code> call. Summarizing the post, you may need to setup some initial data and &ldquo;fork&rdquo; a bunch of workers. All these works are supposed to execute in <em>their own</em> address space and share <em>only the initial data</em>. In this case, copy-on-write is extremely useful since the initial data can be shared in physical memory and forking this way would be extremely cheap. The kernel marks all these shared pages as read only, and makes writable copies of shared data when they are written to.</p>
-
-<p>There is a small overhead if <code>fork</code> is followed immediately by an <code>exec</code> system call, since the copy-on-write shared address space is of no use and is thrown away anyway. Combining both the <code>fork</code>, <code>exec</code> in this case might might have some advantages, reducing this overhead.</p>
-
-<h2>Linux Implementation of Copy-on-write (COW) for shared Virtual Memory Areas</h2>
-
-<p>Some of this COW code that executes on a fork can be found in <code>mm/memory.c</code>. There is an is_cow function to detect if a virtual memory area (a region of virtual memory, see <code>/proc/self/maps</code>) is copy-on-write.</p>
-
-<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="k">static</span> <span class="kr">inline</span> <span class="n">bool</span> <span class="nf">is_cow_mapping</span><span class="p">(</span><span class="n">vm_flags_t</span> <span class="n">flags</span><span class="p">)</span>
-</span><span class='line'><span class="p">{</span>
-</span><span class='line'>        <span class="k">return</span> <span class="p">(</span><span class="n">flags</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">VM_SHARED</span> <span class="o">|</span> <span class="n">VM_MAYWRITE</span><span class="p">))</span> <span class="o">==</span> <span class="n">VM_MAYWRITE</span><span class="p">;</span>
-</span><span class='line'><span class="p">}</span>
-</span></code></pre></td></tr></table></div></figure>
-
-
-<p>A VMA (Virtual Memory Area) is a contiguous segment of virtual memory belonging to a particular process. Every VMA has a bunch of VM_ flags associated with it. <code>VM_MAYWRITE</code>, relevant to the above code, is used to mark that a mapped region can be changed to writable by mprotect system call. It is possible that a memory region is initially readonly and the user wants to make it writable. <code>VM_MAYWRITE</code> gives that permission. Note that if if the kernel doesn&rsquo;t set <code>VM_MAYWRITE</code>, then the region is automatically not COW because there is no question of writing to it.</p>
-
-<p>When a memory mapping is created via the mmap system call, and if <code>MAP_SHARED</code> is passed in flags, the <code>VM_SHARED</code> bit is set for the VMA and as a result the region is not copy-on-write (The above is_cow_mapping function returns false). By definition, shared memory regions are just that &ndash; shared. So no need copy-on-write. In other words, If the VMA is a shared mapping or is a read only mapping, then it isn&rsquo;t a COW mapping.</p>
-
-<p>Let&rsquo;s take the example of mapping a file using mmap,</p>
-
-<p>By default in the kernel on VMA creation, the VMA flags is set to <code>VM_SHARED = 0</code> and <code>VM_MAYWRITE = 1</code>. Now if mmap is asked it to create a shared mapping of a file by passing it <code>MAP_SHARED</code> flag, for example, that can be shared with other processes that are being forked, then the <code>VM_SHARED</code> bit is set to 1 for that VMA. Additionally if the file is opened in read only mode, then <code>VM_MAYWRITE</code> is set to 1. This has the effect of making is_cow_mapping return false. Ofcourse, the shared mapping doesn&rsquo;t need to be a COW.</p>
-
-<p>On the other hand, if <code>MAP_PRIVATE</code> is passed in the flags to mmap, then <code>VM_SHARED</code> bit is set to 0, and <code>VM_MAYWRITE</code> remains at 1 (regardless of whether the file is read or write opened, since writes will not be carried to the underlying file). This makes is_cow_mapping return true. Indeed, private mappings should be copy-on-write enabled.</p>
-
-<p>You can see the code I&rsquo;m talking about <a href="http://lxr.free-electrons.com/source/mm/mmap.c#L1284">conveniently here</a>.</p>
-
-<p>The important point here is that every mapping is either a COW mapping or not a COW mapping. During the <code>clone</code> system call which is called by <code>fork</code> library call internally, if the <code>CLONE_VM</code> flag is not passed to <code>clone</code> as is the case internally within <code>fork</code>, then all the VMA mappings of the parent process are copied to the child, including the page table entries. In this case, any writes to COW mappings should trigger a copy on write. The main thing to note is the children <em>inherit</em> the COW property of all the copied VMA mappings of its parent and don&rsquo;t need to be explictly marked as COW.</p>
-
-<p>However, If <code>CLONE_VM</code> is passed, then the VMAs are not copied and the memory descriptor of the child and the parent process are the same, in this case the child and parent share the same address space and are thus are threads. <a href="http://lxr.free-electrons.com/source/kernel/fork.c#L879">See for yourself</a>. COW or no COW doesn&rsquo;t matter here.</p>
-
-<p>So here&rsquo;s a question for you, For N <code>clone</code> system calls with <code>!CLONE_VM</code> passed for spawning N threads, we can just create as many VMA copies as we want each time, the COW mappings will take care of themselves. Right? Almost! There&rsquo;s more work&hellip; the <em>physical pages</em> of both the original VMA and the copy VMA have to be marked as read-only. That&rsquo;s the only way Copy-on-write of those will be triggered by the CPU when those pages are written to. Here&rsquo;s the code in <a href="http://lxr.free-electrons.com/source/mm/memory.c#L849">copy_one_pte</a> that sets this up:</p>
-
-<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-<span class='line-number'>8</span>
-</pre></td><td class='code'><pre><code class='c'><span class='line'>     <span class="cm">/*</span>
-</span><span class='line'><span class="cm">      * If it&#39;s a COW mapping, write protect it both</span>
-</span><span class='line'><span class="cm">      * in the parent and the child</span>
-</span><span class='line'><span class="cm">      */</span>
-</span><span class='line'>     <span class="k">if</span> <span class="p">(</span><span class="n">is_cow_mapping</span><span class="p">(</span><span class="n">vm_flags</span><span class="p">))</span> <span class="p">{</span>
-</span><span class='line'>             <span class="n">ptep_set_wrprotect</span><span class="p">(</span><span class="n">src_mm</span><span class="p">,</span> <span class="n">addr</span><span class="p">,</span> <span class="n">src_pte</span><span class="p">);</span>
-</span><span class='line'>             <span class="n">pte</span> <span class="o">=</span> <span class="n">pte_wrprotect</span><span class="p">(</span><span class="n">pte</span><span class="p">);</span>
-</span><span class='line'>     <span class="p">}</span>
-</span></code></pre></td></tr></table></div></figure>
-
-
-<p>
-There you go, now when the COW memory region is written to, a page fault happens, and the page fault handler knows that the VMA of the faulting page is a COW and that&rsquo;s what triggered the page fault. It can then create a copy of the page and restart the faulting instruction, this time removing the write protection if there aren&rsquo;t any others sharing the VMA. So in short, fork+exec can be expensive if you had done lots of <code>fork</code> calls on a process with a lot of large files. Since all this copying business is wasted on doing a subsequent <code>exec</code> system call.</p>
-
-<p>There is one optimization however, why should you have to do this marking for pages that are not physically present in memory? Those will fault anyway. So the above code is <em>not run</em> if the page is not present, nicely done by checking for <code>!pte_present(pte)</code> to be true before the preceding code.</p>
-
-<p>Please share any comments you may have in the comments section.</p>
-</div>
-  
-  
-
-
-    </article>
-  
   <div class="pagination">
+    
+      <a class="prev" href="/blog/page/2/">&larr; Older</a>
     
     <a href="/blog/archives">Blog Archives</a>
     
@@ -968,6 +535,10 @@ There you go, now when the COW memory region is written to, a page fault happens
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2016/12/31/nmi-perf-armv8/">ARMv8 and NMI Support</a>
+      </li>
     
       <li class="post">
         <a href="/blog/2016/06/18/ftrace-events-mechanism/">Ftrace Events Mechanism</a>
