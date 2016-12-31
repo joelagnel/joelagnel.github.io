@@ -47,17 +47,29 @@
 </head>
 
 <body   >
-  <header role="banner"><hgroup style="float:left;">
+  <header role="banner"><div>
+<div style="margin-right:50px;float:left;">
   <h1><a href="/">LinuxInternals.org</a></h1>
   
-    <h2>Tinkering with Embedded Linux</h2>
+    <h2>by Joel Fernandes</h2>
   
-</hgroup>
-<wwwwwhgrouppp style="float:right;">
- <h2><a href="https://twitter.com/joel_linux">@joel_linux on twitter</h2>
+</div>
+<div style="float:left;" class="hnav">
+ <a href="/joel">Joel's homepage</a><br>
+ <a href="/blog/archives/">Articles</a><br>
+ <a href="/resources">My talks and resources</a><br>
+</div>
+<div style="float:right;">
+<img src="/images/peng.png" height=150 width=150>
+</div>
 
+<div style="position:absolute; top: 170px" class="hnavtitle">
+<a href="http://www.meetup.com/LinuxInternals-org-Embedded-Linux-Training/">Join the internals meetup!</a>
+</div>
+</div>
 
 </header>
+<!--
   <nav role="navigation"><ul class="subscription" data-subscription="rss">
   <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
   
@@ -78,6 +90,7 @@
 </ul>
 
 </nav>
+-->
   <div id="main">
     <div id="content">
       <div>
@@ -231,6 +244,10 @@
     
       <li class="post">
         <a href="/blog/2016/03/20/tif-need-resched-why-is-it-needed/">TIF_NEED_RESCHED: Why Is It Needed</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output/">Understanding Critical Section Behavior With Ftrace Output</a>
       </li>
     
       <li class="post">
