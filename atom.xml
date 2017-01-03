@@ -4,7 +4,7 @@
   <title><![CDATA[LinuxInternals.org]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2016-12-31T11:49:35-08:00</updated>
+  <updated>2017-01-02T17:00:40-08:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -14,19 +14,19 @@
 
   
   <entry>
-    <title type="html"><![CDATA[ARMv8 and NMI Support]]></title>
+    <title type="html"><![CDATA[ARMv8: Flamegraph and NMI Support]]></title>
     <link href="http://www.linuxinternals.org/blog/2016/12/31/nmi-perf-armv8/"/>
     <updated>2016-12-31T21:29:26-08:00</updated>
     <id>http://www.linuxinternals.org/blog/2016/12/31/nmi-perf-armv8</id>
-    <content type="html"><![CDATA[<p>Non-maskable interrupts (NMI) is a really useful feature for debugging, that hardware can provide. Some great Linux kernel features that rely on NMI to work properly are:</p>
+    <content type="html"><![CDATA[<p>Non-maskable interrupts (NMI) is a really useful feature for debugging, that hardware can provide. Unfortunately ARM doesn&rsquo;t provide an out-of-the-box NMI interrupt mechanism. This post shows a flamegraph issue due to missing NMI support, and the upstream work being done to simulate NMI in ARMv8.</p>
+
+<p>Some great Linux kernel features that rely on NMI to work properly are:</p>
 
 <ul>
 <li><p>Backtrace from all CPUs: A number of places in the kernel rely on dumping the stacks of all CPUs at the time of a failure to determine what was going on. Some of them are <a href="http://lxr.free-electrons.com/source/kernel/hung_task.c">Hung Task detection</a>, <a href="http://lxr.free-electrons.com/source/Documentation/lockup-watchdogs.txt">Hard/soft lockup detector</a> and spinlock debugging code.</p></li>
-<li><p>Perf profiling: To be able to profile code that runs in interrupt handlers, or in sections of code that disable interrupts, Perf works well only when NMI is available in the architecture.</p></li>
+<li><p>Perf profiling and flamegraphs: To be able to profile code that runs in interrupt handlers, or in sections of code that disable interrupts, Perf relies on NMI support in the architecture. <a href="http://www.brendangregg.com/FlameGraphs/cpuflamegraphs.html">flamegraphs</a> are a great visual representation of perf profile output. Below is a flamegraph I generated from perf profile output, that shows just what happens on an architecture like ARMv8 with missing NMI support. Perf is using maskable-interrupts on this platform for profiling:</p></li>
 </ul>
 
-
-<p>Unfortunately ARM doesn&rsquo;t provide an out-of-the-box NMI interrupt mechanism. Below is a <a href="http://www.brendangregg.com/FlameGraphs/cpuflamegraphs.html">flamegraph</a> generated with perf and some flamegraph magic, that shows just what happens when perf is used in an architecture like ARM that doesn&rsquo;t support NMI. The flamegraph is generated on an ARMv8 platform:</p>
 
 <p><img src="http://www.linuxinternals.org/images/nmi/flamegraph.png"></p>
 
@@ -56,7 +56,7 @@ He then defines what values of PMR would be consider as &ldquo;unmasked&rdquo; v
 
 <h2>Quirk 1: Saving of the PMR context during traps</h2>
 
-<p>Its suggested in the patchset that during traps, the priority value set in the PMR needs to be saved because it may change during traps. To facilitate this, Daniel found a dummy bit in the PSTATE register (PSR). During any exception, Bit 7 of of the PMR is saved into a PSR bit (he calls it the G bit) and restores it on return from the exception. Look at the changes to <code>kernel_entry</code> macro in the setfor this code.</p>
+<p>Its suggested in the patchset that during traps, the priority value set in the PMR needs to be saved because it may change during traps. To facilitate this, Daniel found a dummy bit in the PSTATE register (PSR). During any exception, Bit 7 of of the PMR is saved into a PSR bit (he calls it the G bit) and restores it on return from the exception. Look at the changes to <code>kernel_entry</code> macro in the set for this code.</p>
 
 <h2>Quirk 2: Ack of masked interrupts</h2>
 
