@@ -30,12 +30,6 @@
     </url>
     <url>
         <loc>
-            http://www.linuxinternals.org/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output/
-        </loc>
-        <lastmod>2016-12-30T19:46:07-08:00</lastmod>
-    </url>
-    <url>
-        <loc>
             http://www.linuxinternals.org/blog/2016/03/20/tif-need-resched-why-is-it-needed/
         </loc>
         <lastmod>2016-12-30T19:46:07-08:00</lastmod>
