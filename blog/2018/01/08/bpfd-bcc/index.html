@@ -1,4 +1,133 @@
-<p>This article (with some edits) also <a href="https://lwn.net/Articles/744522/">appeared on LWN</a>.</p>
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>BPFd- Running BCC Tools Remotely Across Systems and Architectures - LinuxInternals.org</title>
+  <meta name="author" content="Joel Fernandes">
+
+  
+  <meta name="description" content="This article (with some edits) also appeared on LWN. Introduction BCC (BPF Compiler Collection) is a toolkit and a suite of kernel
+tracing tools that &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://www.linuxinternals.org/blog/2018/01/08/bpfd-bcc">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="LinuxInternals.org" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/libs/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="//fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="//fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+
+  
+  <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-50777115-1']);
+    _gaq.push(['_trackPageview']);
+
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  </script>
+
+
+</head>
+
+<body   >
+  <header role="banner"><div>
+<div style="margin-right:50px;float:left;">
+  <h1><a href="/">LinuxInternals.org</a></h1>
+  
+    <h2>by Joel Fernandes</h2>
+  
+</div>
+<div style="float:left;" class="hnav">
+ <a href="/joel">About me</a><br>
+ <a href="/blog/archives/">Articles</a><br>
+ <a href="/resources">Talks and resources</a><br>
+</div>
+<div style="float:right;">
+<img src="/images/peng.png" height=150 width=150>
+</div>
+
+<div style="position:absolute; top: 170px" class="hnavtitle">
+<a>Bits about inner workings of Linux</a>
+<!-- a href="http://www.meetup.com/LinuxInternals-org-Embedded-Linux-Training/">Join the internals meetup! -->
+<!-- a href="http://www.meetup.com/LinuxInternals-org-Embedded-Linux-Training/">Join the internals meetup! -->
+</div>
+</div>
+
+</header>
+<!--
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="https://www.google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:www.linuxinternals.org" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+  <li><a href="/technical-resources/">Resources</a></li>
+  <li><a href="/aboutme/">About me</a></li>
+</ul>
+
+</nav>
+-->
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">BPFd- Running BCC Tools Remotely Across Systems and Architectures</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2018-01-08T00:00:00-08:00" pubdate data-updated="true"></time>
+        
+           | <a href="#disqus_thread"
+             data-disqus-identifier="http://www.linuxinternals.org">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><p>This article (with some edits) also <a href="https://lwn.net/Articles/744522/">appeared on LWN</a>.</p>
 
 <h2>Introduction</h2>
 
@@ -350,3 +479,159 @@ them on a non-local target machine.</p>
 
 <p>If you have any questions, feel to <a href="http://www.linuxinternals.org/joel/">reach out</a> to me or drop me a note in the
 comments section.</p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">Joel Fernandes</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2018-01-08T00:00:00-08:00" pubdate data-updated="true"></time>
+      
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  <a href="//twitter.com/share" class="twitter-share-button" data-url="http://www.linuxinternals.org/blog/2018/01/08/bpfd-bcc/" data-via="" data-counturl="http://www.linuxinternals.org/blog/2018/01/08/bpfd-bcc/" >Tweet</a>
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2016/12/31/nmi-perf-armv8/" title="Previous Post: ARMv8: flamegraph and NMI support">&laquo; ARMv8: flamegraph and NMI support</a>
+      
+      
+        <a class="basic-alignment right" href="/blog/2018/02/10/usdt-notes/" title="Next Post: USDT for reliable Userspace event tracing">USDT for reliable Userspace event tracing &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2018/02/10/usdt-notes/">USDT for Reliable Userspace Event Tracing</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2018/01/08/bpfd-bcc/">BPFd- Running BCC Tools Remotely Across Systems and Architectures</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2016/12/31/nmi-perf-armv8/">ARMv8: Flamegraph and NMI Support</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2016/06/18/ftrace-events-mechanism/">Ftrace Events Mechanism</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2016/03/20/tif-need-resched-why-is-it-needed/">TIF_NEED_RESCHED: Why Is It Needed</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output/">Understanding Critical Section Behavior With Ftrace Output</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/">Tying 2 Voltage Sources/signals Together</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/06/04/a-microsd-card-remote-switcher/">MicroSD Card Remote Switch</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">Linux Spinlock Internals</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/">Studying Cache-line Sharing Effects on SMP Systems</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/">Design of Fork Followed by Exec in Linux</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2018 - Joel Fernandes -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+<script type="text/javascript">
+      var disqus_shortname = 'linuxinternals1';
+      
+        
+        var disqus_script = 'count.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = '//' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+
+
+  <script type="text/javascript">
+    (function(){
+      var twitterWidgets = document.createElement('script');
+      twitterWidgets.type = 'text/javascript';
+      twitterWidgets.async = true;
+      twitterWidgets.src = '//platform.twitter.com/widgets.js';
+      document.getElementsByTagName('head')[0].appendChild(twitterWidgets);
+    })();
+  </script>
+
+
+
+
+
+</body>
+</html>
