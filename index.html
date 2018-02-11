@@ -288,7 +288,7 @@
       
   <header>
     
-      <h1 class="entry-title"><a href="/blog/2018/01/08/bpfd-bcc/">Bpfd Bcc</a></h1>
+      <h1 class="entry-title"><a href="/blog/2018/01/08/bpfd-bcc/">BPFd- Running BCC Tools Remotely Across Systems and Architectures</a></h1>
     
     
       <p class="meta">
@@ -314,90 +314,182 @@
   </header>
 
 
-  <div class="entry-content"><h1>BPFd: Running BCC tools remotely across systems and architectures</h1>
+  <div class="entry-content"><p>This article (with some edits) also <a href="https://lwn.net/Articles/744522/">appeared on LWN</a>.</p>
 
 <h2>Introduction</h2>
 
-<p><a href="https://github.com/iovisor/bcc/blob/master/README.md">BCC tools</a> are a suite of kernel tracing tools that allow systems engineers to efficiently and safely get a deep understanding into the inner workings of a Linux system. Because they can&rsquo;t crash the kernel, they are safer than kernel modules and are also can be used in production. <a href="http://www.brendangregg.com/ebpf.html">Brendan Gregg has written</a> several nice tools, and talks in videos showing the full power of eBPF based tools.</p>
+<p><a href="https://github.com/iovisor/bcc/blob/master/README.md">BCC (BPF Compiler Collection)</a> is a toolkit and a suite of kernel
+tracing tools that allow systems engineers to efficiently and safely get a deep understanding into the inner workings of
+a Linux system. Because they can&rsquo;t crash the kernel, they are safer than kernel modules and can be run in production
+environments. <a href="http://www.brendangregg.com/ebpf.html">Brendan Gregg has written</a> nice tools and given talks showing the
+full power of eBPF based tools. Unfortunately, BCC has no support for a cross-development workflow. I define
+&ldquo;cross-development&rdquo; as a development workflow in which the development machine and the target machine running the
+developed code are different. Cross-development is very typical among Embedded System kernel developers who often
+develop on a powerful x86 host and then flash and test their code on SoCs (System on Chips) based on the ARM
+architecture. Not having a cross-development flow gives rise to several complications, lets go over them and discuss a
+solution called BPFd that cleverly addresses this issue.</p>
 
-<p>In the Android kernel team, we work mostly on ARM64 systems since most Android devices are on this architecture. BCC tools support on ARM64 systems had been broken for years. Recently this got <a href="https://github.com/iovisor/bcc/issues/1202">fixed</a> and one could run the tools but..</p>
+<p>In the Android kernel team, we work mostly on ARM64 systems, since most Android devices are on this architecture. BCC
+tools support on ARM64 systems has stayed broken for years. One of the reasons for this difficulty is with ARM64 inline
+assembler statements. Unavoidably, kernel header includes in BCC tools result in inclusion of asm headers which in the
+case of ARM64 has the potential of spewing inline asm ARM64 instructions <a href="https://www.mail-archive.com/iovisor-dev@lists.iovisor.org/msg00299.html">causing major
+pains</a>  to LLVM&rsquo;s BPF backend. Recently this
+issue got fixed by BPF inline asm support (these
+<a href="https://github.com/llvm-mirror/llvm/commit/2865ab6996164e7854d55c9e21c065fad7c26569">LLVM</a> <a href="https://github.com/llvm-mirror/llvm/commit/a6b7d22c2e64f44e6c74ad7e5ce5670f5ae72da3">commits</a>) and <a href="(https://github.com/iovisor/bcc/issues/1202">folks could finally run BCC
+tools on arm64</a>), but..</p>
 
-<p>Inorder for BCC tools to work at all, they need kernel sources. This is because most tools need to register callbacks on the ever changing kernel API inorder to get their data. Such callbacks are registered using the <a href="https://lwn.net/Articles/132196/">kprobe</a> infrastructure. Kernel sources are large in size and often can take up a large amount of space on the system being debugged. They can also get out of sync which may make the tools misbehave.</p>
+<p>In order for BCC tools to work at all, they need kernel sources. This is because most tools need to register callbacks
+on the ever-changing kernel API in order to get their data. Such callbacks are registered using the
+<a href="https://lwn.net/Articles/132196/">kprobe</a> infrastructure. When a BCC tool is run, BCC switches its current directory
+into the kernel source directory before compilation starts, and compiles the C program that embodies the BCC tool&rsquo;s
+logic. The C program is free to include kernel headers for <code>kprobes</code> to work and to use kernel data structures.</p>
 
-<p>The other issue is Clang and LLVM libraries need to be available on the target being traced. This is because the tools compile the needed BPF bytecode which are then loaded into the kernel. These libraries take up a lot space. It seems overkill you need a full blown compiler infrastructure on a system when the BPF code can be compiled elsewhere and maybe even compiled just once. Further these libraries need to be cross-compiled to run on the architecture you&rsquo;re tracing. That&rsquo;s possible, but why would anyone want to do that if they didn&rsquo;t need to? Cross-compiling compiler toolchains can be tedious and stressful.</p>
+<p>Even if one were not to use <code>kprobes</code>, BCC also implicity adds a common <code>helpers.h</code> include directive  whenever an eBPF
+C program is being compiled, found in <code>src/cc/export/helpers.h</code> in the BCC sources. This <code>helpers.h</code> header uses the
+<code>LINUX_VERSION_CODE</code> macro to create a &ldquo;version&rdquo; section in the compiled output. <code>LINUX_VERSION_CODE</code> is available only
+in the specific kernel&rsquo;s sources being targeted and is used during eBPF program loading to make sure the BPF program is
+being loaded into a kernel with the right version. As you can see, kernel sources quickly become mandatory for compiling
+eBPF programs.</p>
 
-<h2>BPFd: A daemon for BPF code and commands</h2>
+<p>In some sense this build process is similar to how external kernel modules are built. Kernel sources are large in size
+and often can take up a large amount of space on the system being debugged. They can also get out of sync, which may
+make the tools misbehave.</p>
+
+<p>The other issue is Clang and LLVM libraries need to be available on the target being traced. This is because the tools
+compile the needed BPF bytecode which are then loaded into the kernel. These libraries take up a lot space. It seems
+overkill that you need a full-blown compiler infrastructure on a system when the BPF code can be compiled elsewhere and
+maybe even compiled just once. Further, these libraries need to be cross-compiled to run on the architecture you&rsquo;re
+tracing. That&rsquo;s possible, but why would anyone want to do that if they didn&rsquo;t need to? Cross-compiling compiler
+toolchains can be tedious and stressful.</p>
+
+<h2>BPFd: A daemon for running eBPF BCC tools across systems</h2>
 
 <p><a href="https://github.com/joelagnel/bpfd">Sources for BPFd can be downloaded here</a>.</p>
 
-<p>Instead of loading up all the tools, compiler infrastructure and kernel sources onto the targets being traced, I decided to write a proxy program named BPFd that would receive commands and perform them on behalf of whoever is requesting them. The program would encapsulate all the needs of BCC and perform them &ndash; this includes loading a BPF program, creating, deleting and looking up maps, attaching a BPF program to a kprobe, polling for new data that the BPF may have written into a perf buffer etc.</p>
+<p>Instead of loading up all the tools, compiler infrastructure and kernel sources onto the remote targets being traced and
+running BCC that way, I decided to write a proxy program named BPFd that receives commands and performs them on behalf
+of whoever is requesting them. All the heavily lifting (compilation, parsing of user input, parsing of the hash maps,
+presentation of results etc) is done by BCC tools on the host machine, with BPFd running on the target and being the
+interface to the target kernel. BPFd encapsulates all the needs of BCC and performs them &ndash; this includes loading a BPF
+program, creating, deleting and looking up maps, attaching a eBPF program to a kprobe, polling for new data that the
+eBPF program may have written into a perf buffer, etc. If it&rsquo;s woken up because the perf buffer contains new data, it&rsquo;ll
+inform BCC tools on the host about it, or it can return map data whenever requested, which may contain information
+updated by the target eBPF program.</p>
 
 <h3>Simple design</h3>
 
-<p>The design of BPFd is quite simple, it expects commands on <code>stdin</code> (standard input) and provides the results over <code>stdout</code> (standard output). Every command is only a single line always, no matter how big the command is. This allows easy testing using <code>cat</code>, since one could simply <code>cat</code> a file with commands, and parse whether the results are as expected. Results from a command however can be multiple lines.</p>
+<p>Before this work, the BCC tools architecture was as follows:
+<img src="images/bcc-arch.png" alt="BCC architecture" /></p>
 
-<p>For example, following is a command to BPFd for creating a BPF map:
-  BPF_CREATE_MAP 1 count 8 40 10240 0</p>
+<p>BPFd based invocations partition this, thus making it possible to do cross-development and execution of the tools across
+machine and architecture boundaries. For instance, kernel sources that the BCC tools depend on can be on a development
+machine, with eBPF code being loaded onto a remote machine. This partioning is illustrated in the following diagram:
+<img src="images/bcc-with-bpfd-arch.png" alt="BCC architecture with BPFd" /></p>
 
-<p>And the result from BPFd is:
-  bpf_create_map: ret=3</p>
+<p>The design of BPFd is quite simple, it expects commands on <code>stdin</code> (standard input) and provides the results over
+<code>stdout</code> (standard output). Every command a single line always, no matter how big the command is. This allows easy
+testing using <code>cat</code>, since one could simply <code>cat</code> a file with commands, and check if BPFd&rsquo;s <code>stdout</code> contain the
+expected results. Results from a command, however can be multiple lines.</p>
 
-<p>The command tells BPFd to create a map named <code>count</code> with map type 1, with a key size of 6 bytes and a value size of 40, maximum of 10240 entries and no special flags. In return, BPFd created a map which is identified by file descriptor 3.</p>
+<p>BPF maps are data structures that a BPF program uses to store data which can be
+retrieved at a later time. Maps are represented by file descriptor returned by
+the <code>bpf</code> system call once the map has been successfully created.
+For example, following is a command to BPFd for creating a BPF hashtable map.</p>
 
-<p>With the simple standard input/output design, its possible to write wrappers around BPFd to handle more advanced communication such as USB or Networking. In Android, we are going to be communicating these commands over the USB-based <a href="https://developer.android.com/studio/command-line/adb.html">Android Debug Bridge</a>.</p>
-
-<h3>Changes to BCC tools</h3>
-
-<p><a href="https://github.com/joelagnel/bcc/tree/bcc-bpfd">Branch with latest changes to BCC tools</a></p>
-
-<p>A new <code>remotes</code> module has been added to BCC tools with an abstraction that different remote mechanisms should adhere to. This keeps code duplication to a minimum. Currently an <code>adb</code> remote and a <code>process</code> remote have been added.  The <code>adb</code> remote is for communication with the target device over USB or WiFi using the <a href="https://developer.android.com/studio/command-line/adb.html">Android Debug Bridge</a>. The <code>process</code> remote is for local testing. With this remote, BPFd is forked on the same machine running BCC and communicates with it over <code>stdin</code> and <code>stdout</code>.</p>
-
-<p>BCC tools modifications involve the following changes:
-&ndash; Adding support for remote communication with BPFd such as adb
-&ndash; Changes to BCC to send commands to the remote system
-&ndash; Making the kernel build more configurable so that kernel source and target architecture information can be passed through environment variables.
-&ndash; Changes to tools to accomodate the differences
-&ndash; Some bug fixes</p>
-
-<h3>Installation procedure: Trying this work out for yourself!</h3>
-
-<p>If you want to just see examples of the results of running these tools, <a href="#running-filetop">you could jump</a> straight to the tools section.
-This is just an example of a typical installation procedure, it should be fairly straight forward to get these steps working for other remotes or architectures. For this example, we&rsquo;ll refer to the machine where you do all your development and have your kernel sources available as the <code>development machine</code> and the machine you&rsquo;re tracing as the <code>target</code>.</p>
-
-<h4>Install BCC tools on your development host</h4>
-
-<p>Follow the <a href="https://github.com/iovisor/bcc/blob/master/INSTALL.md">steps here</a> to get BCC tools installed on your development machine.</p>
-
-<p>Except for the following changes:
-&ndash; Build BCC <a href="https://github.com/joelagnel/bcc/tree/bcc-bpfd">using this branch</a>
-&ndash; Read the section &ldquo;Build LLVM and Clang development libs&rdquo; in that document. Unfortunately BPF inline-assembler support in LLVM is fairly recent, so you may need to build your own LLVM till then. Once LLVM is built, add <code>&lt;path-to-llvm-source&gt;/build/bin/</code> to your <code>$PATH</code> and then build BCC.</p>
-
-<h4>Build/Install BPFd on your target machine</h4>
-
-<p><a href="https://github.com/joelagnel/bpfd">Clone and build the BPFd sources.</a>. This really depends on the target distro, typically you can store it anywere <code>$PATH</code> on the target can find it, in Android we store it in <code>/data/</code> for now. In the future we&rsquo;d want to store it in /system/bin/ once its an official Android package.</p>
-
-<h4>Prepare your kernel sources</h4>
-
-<ul>
-<li>Make sure the kernel sources are available on your development machine somewhere, and that the kernel build has completed atleast once in the kernel source directory.</li>
-</ul>
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>BPF_CREATE_MAP 1 count 8 40 10240 0</span></code></pre></td></tr></table></div></figure>
 
 
-<h4>Setup environment variables and run tools</h4>
+<p>And the result from BPFd is:</p>
 
-<p>The following environment variables need to be setup:
-&ndash; <code>ARCH</code> should point to the architecture of the <code>target</code> such as <code>x86</code> or <code>arm64</code>.
-&ndash; <code>BCC_KERNEL_SOURCE</code> should point to the kernel source directory.
-&ndash; <code>BCC_REMOTE</code> should point to the remote mechanism such as <code>adb</code>.</p>
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>bpf_create_map: ret=3</span></code></pre></td></tr></table></div></figure>
 
-<p>Two example enviornment variable settings are provided which can be sourced. Here&rsquo;s one for <a href="https://github.com/joelagnel/bcc/blob/bcc-bpfd/arm64-adb.rc">adb interface with an arm64 Android target</a> and another one for a <a href="https://github.com/joelagnel/bcc/blob/bcc-bpfd/x86-local.rc">local x86 target with a process remote</a>.</p>
 
-<h3>BPF Demos: examples of different BCC tools running on Android</h3>
+<p>Since BPFd is proxying the map creation, the file descriptor (3 in this example) is
+ mapped into <code>BPFd's</code> file descriptor table. The file descriptor can be used later to
+look up entries that the BPF program in the kernel may have created, or to clear all
+entries in the map, as is done by tools that periodically clear the accounting done
+by a BPF program.</p>
+
+<p>The <code>BPF_CREATE_MAP</code> command in this example tells BPFd to create a map named
+<code>count</code> with map type 1 (<a href="https://github.com/torvalds/linux/blob/master/include/uapi/linux/bpf.h#L101">type 1 is a hashtable
+map</a>),
+with a key size of 8 bytes and a value size of 40, maximum of 10240 entries and
+no special flags. BPFd created a map and identified by file descriptor 3.</p>
+
+<p>With the simple standard input/output design, it&rsquo;s possible to write wrappers around BPFd to handle more advanced
+communication methods such as USB or Networking. As a part of my analysis work in the Android kernel team, I am
+communicating these commands over the <a href="https://developer.android.com/studio/command-line/adb.html">Android Debug Bridge</a>
+which interfaces with the target device over either USB or TCP/IP. I have shared several demos below.</p>
+
+<h3>Changes to the BCC project for working with BPFd</h3>
+
+<p><a href="https://github.com/iovisor/bcc/">BCC</a> needed several changes to be able to talk
+to BPFd over a remote connection. All these changes <a href="https://github.com/joelagnel/bcc/tree/bcc-bpfd">are available
+here</a> and will be pushed
+upstream soon.</p>
+
+<p>Following are all the BCC modifications that have been made:</p>
+
+<h4>Support for remote communication with BPFd such as over the network</h4>
+
+<p>A new <code>remotes</code> module has been added to BCC tools with an abstraction that
+different remote types, such as networking or USB must implement. This keeps
+code duplication to a minimum. By implementing <a href="https://github.com/joelagnel/bcc/blob/bcc-bpfd/src/python/bcc/remote/base.py">the functions
+needed</a>
+for a remote, a new communication method can be easily added. Currently an
+<code>adb</code> remote and a <code>process</code> remote are provided. The <code>adb</code> remote is for
+communication with the target device over USB or TCP/IP using the <a href="https://developer.android.com/studio/command-line/adb.html">Android
+Debug Bridge</a>. The
+<code>process</code> remote is probably useful just for local testing. With the <code>process</code> remote,
+BPFd is forked on the same machine running BCC and communicates with it over
+<code>stdin</code> and <code>stdout</code>.</p>
+
+<h4>Changes to BCC to send commands to the remote BPFd</h4>
+
+<p><a href="https://github.com/iovisor/bcc/blob/master/src/cc/libbpf.c">libbpf.c</a> is the
+main C file in the BCC project that talks to the kernel for all things BPF.
+This is illustrated in the diagram above. Inorder to make BCC perform BPF
+operations on the remote machine instead of the local machine, parts of BCC
+that make calls to the local <code>libbpf.c</code> are now instead channeled to the remote
+BPFd on the target. BPFd on the target then perform the commands on behalf of
+BCC running locally, by calling into its copy of <code>libbpf.c</code>.</p>
+
+<p>One of the tricky parts to making this work is, not only calls to <code>libbpf.c</code>
+but certain other paths need to be channeled to the remote machine. For example, to
+attach to a tracepoint, BCC needs a list of all available tracepoints on the
+system. This list has to be obtained on the remote system, not the local one and is
+the exact reason why there exists the <a href="https://github.com/joelagnel/bpfd/blob/master/src/bpfd.c#L421">GET_TRACE_EVENTS</a>
+command in BPFd.</p>
+
+<h4>Making the kernel build for correct target processor architecture</h4>
+
+<p>When BCC compiles the C program encapsulated in a BCC tool into eBPF
+instructions, it assumes that the eBPF program will run on the same processor
+architecture that BCC is running on. This is incorrect especially when building
+the eBPF program for a different target.</p>
+
+<p>Some time ago, before I started this project, I <a href="https://patchwork.kernel.org/patch/9961801/">changed
+this</a> when building the in-kernel
+eBPF samples (which are simple standalone samples and unrelated to BCC). Now, I have had to <a href="https://github.com/joelagnel/bcc/commit/2a2f9d41c336d8aa058338ae536bd93d31dbb1ef">make a similar
+change</a>
+to BCC so that it compiles the C program correctly for the target architecture.</p>
+
+<h3>Installation</h3>
+
+<p>Try it out for yourself! Follow the <a href="https://github.com/joelagnel/bpfd/blob/master/INSTALL.md#diy">Detailed</a> or
+<a href="https://github.com/joelagnel/bpfd/blob/master/INSTALL.md">Simple</a> instructions. Also, apply this <a href="https://raw.githubusercontent.com/joelagnel/bpfd/master/patches/kernel/0001-bpf-stackmap-Implement-bpf_get_next_key.patch">kernel
+patch</a>
+to make it faster to run tools like offcputime. I am submitting this patch to LKML as we speak.</p>
+
+<h3>BPF Demos: examples of BCC tools running on Android</h3>
 
 <h4>Running filetop</h4>
 
-<p><code>filetop</code> is a BCC tool which shows you all read/write I/O operations with a similar experience to the <code>top</code> tool. In refreshes every few seconds giving you a live view of these operations.
-Goto your bcc directory and set the env variables needed. For Android running on Hikey960, I run:</p>
+<p><code>filetop</code> is a BCC tool which shows you all read/write I/O operations with a similar experience to the <code>top</code> tool.
+It refreshes every few seconds, giving you a live view of these operations.
+Goto your bcc directory and set the environment variables needed. For Android running on Hikey960, I run:</p>
 
 <figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 </pre></td><td class='code'><pre><code class=''><span class='line'>joel@ubuntu:~/bcc# source arm64-adb.rc</span></code></pre></td></tr></table></div></figure>
@@ -412,6 +504,9 @@ Goto your bcc directory and set the env variables needed. For Android running on
 </span><span class='line'>  export BCC_KERNEL_SOURCE=/home/joel/sdb/hikey-kernel/
 </span><span class='line'>  export BCC_REMOTE=adb</span></code></pre></td></tr></table></div></figure>
 
+
+<p>You could also use the convenient bcc-set script provided in BPFd sources to set these environment variables for you.
+Check <a href="https://github.com/joelagnel/bpfd/blob/master/INSTALL.md">INSTALL.md</a> file in BPFd sources for more information.</p>
 
 <p>Next I start <code>filetop</code>:</p>
 
@@ -436,9 +531,6 @@ Goto your bcc directory and set the env variables needed. For Android running on
 <span class='line-number'>11</span>
 <span class='line-number'>12</span>
 <span class='line-number'>13</span>
-<span class='line-number'>14</span>
-<span class='line-number'>15</span>
-<span class='line-number'>16</span>
 </pre></td><td class='code'><pre><code class=''><span class='line'>  Tracing... Output every 5 secs. Hit Ctrl-C to end
 </span><span class='line'>  13:29:25 loadavg: 0.33 0.23 0.15 2/446 2931
 </span><span class='line'> 
@@ -447,21 +539,22 @@ Goto your bcc directory and set the env variables needed. For Android running on
 </span><span class='line'>  3792   m.android.email  89     0      130     0       R Email.apk
 </span><span class='line'>  3813   AsyncTask #3     29     0      48      0       R EmailProvider.db
 </span><span class='line'>  3808   SharedPreferenc  1      0      16      0       R AndroidMail.Main.xml
-</span><span class='line'>  3811   SharedPreferenc  1      0      16      0       R UnifiedEmail.xml
 </span><span class='line'>  3792   m.android.email  2      0      16      0       R deviceName
 </span><span class='line'>  3815   SharedPreferenc  1      0      16      0       R MailAppProvider.xml
 </span><span class='line'>  3813   AsyncTask #3     8      0      12      0       R EmailProviderBody.db
-</span><span class='line'>  3809   AsyncTask #1     8      0      12      0       R suggestions.db
-</span><span class='line'>  2434   WifiService      4      0      4       0       R iface_stat_fmt
 </span><span class='line'>  2434   WifiService      4      0      4       0       R iface_stat_fmt
 </span><span class='line'>  3792   m.android.email  66     0      2       0       R framework-res.apk</span></code></pre></td></tr></table></div></figure>
 
 
-<p>Notice the Email.apk being read by Android to load the email application, and then various other reads happening related to the email app. Finally, WifiService continously reads iface_state_fmt to get network statistics for Android accounting.</p>
+<p>Notice the Email.apk being read by Android to load the email application, and then various other reads happening related
+to the email app. Finally, WifiService continously reads iface_state_fmt to get network statistics for Android
+accounting.</p>
 
 <h4>Running biosnoop</h4>
 
-<p>Biosnoop is another great tool shows you block level I/O operations (bio) happening on the system along with the latency and size of the operation. Following is a sample output of running <code>tools/biosnoop.py</code> while doing random things in the Android system.</p>
+<p>Biosnoop is another great tool shows you block level I/O operations (bio) happening on the system along with the latency
+and size of the operation. Following is a sample output of running <code>tools/biosnoop.py</code> while doing random things in the
+Android system.</p>
 
 <figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
@@ -470,24 +563,19 @@ Goto your bcc directory and set the env variables needed. For Android running on
 <span class='line-number'>5</span>
 <span class='line-number'>6</span>
 <span class='line-number'>7</span>
-<span class='line-number'>8</span>
-<span class='line-number'>9</span>
-<span class='line-number'>10</span>
 </pre></td><td class='code'><pre><code class=''><span class='line'>  TIME(s)        COMM           PID    DISK    T  SECTOR    BYTES   LAT(ms)
 </span><span class='line'>  0.000000000    jbd2/sdd13-8   2135   sdd     W  37414248  28672      1.90
 </span><span class='line'>  0.001563000    jbd2/sdd13-8   2135   sdd     W  37414304  4096       0.43
 </span><span class='line'>  0.003715000    jbd2/sdd13-8   2135   sdd     R  20648736  4096       1.94
 </span><span class='line'>  5.119298000    kworker/u16:1  3848   sdd     W  11968512  8192       1.72
 </span><span class='line'>  5.119421000    kworker/u16:1  3848   sdd     W  20357128  4096       1.80
-</span><span class='line'>  5.119443000    kworker/u16:1  3848   sdd     W  24551552  4096       1.82
-</span><span class='line'>  5.119462000    kworker/u16:1  3848   sdd     W  24551680  4096       1.82
-</span><span class='line'>  5.119478000    kworker/u16:1  3848   sdd     W  24617256  4096       1.83
 </span><span class='line'>  5.448831000    SettingsProvid 2415   sdd     W  20648752  8192       1.70</span></code></pre></td></tr></table></div></figure>
 
 
 <h4>Running hardirq</h4>
 
-<p>This tool measures the total time taken by different hardirqs in the systems. excessive time spent in hardirq can result in poor real-time performance of the system</p>
+<p>This tool measures the total time taken by different hardirqs in the systems. Excessive time spent in hardirq can result
+in poor real-time performance of the system.</p>
 
 <pre><code>joel@ubuntu:~/bcc# ./tools/hardirqs.py
 </code></pre>
@@ -527,34 +615,57 @@ Goto your bcc directory and set the env variables needed. For Android running on
 <span class='line-number'>5</span>
 <span class='line-number'>6</span>
 <span class='line-number'>7</span>
-<span class='line-number'>8</span>
-<span class='line-number'>9</span>
-<span class='line-number'>10</span>
 </pre></td><td class='code'><pre><code class=''><span class='line'>PID    COMM             D MAJ MIN DISK       I/O  Kbytes  AVGms
 </span><span class='line'>4524   droid.gallery3d  R 8   48  ?           33    1744   0.51
 </span><span class='line'>2135   jbd2/sdd13-8     W 8   48  ?           15     356   0.32
 </span><span class='line'>4313   kworker/u16:4    W 8   48  ?           26     232   1.61
 </span><span class='line'>4529   Jit thread pool  R 8   48  ?            4     184   0.27
 </span><span class='line'>2135   jbd2/sdd13-8     R 8   48  ?            7      68   2.19
-</span><span class='line'>2459   LazyTaskWriterT  W 8   48  ?            3      12   1.77
-</span><span class='line'>2457   TaskSnapshotPer  W 8   48  ?            3      12   1.72
-</span><span class='line'>4541   GLThread 152     R 8   48  ?            1       4   1.81
-</span><span class='line'>4545   Error dump: sys  W 8   48  ?            1       4   1.70</span></code></pre></td></tr></table></div></figure>
+</span><span class='line'>2459   LazyTaskWriterT  W 8   48  ?            3      12   1.77</span></code></pre></td></tr></table></div></figure>
 
 
 <h3>Open issues as of this writing</h3>
 
-<p>While most issues have been fixed, a few remain. Patches and testing are welcomed!
-Following is an incomplete list:
-&ndash; cachetop doesn&rsquo;t show hits/misses counter on arm64
-&ndash; syscount reads <code>comm_for_pid</code> locally, instead of on the remote.
-&ndash; Issues with stacktrace based tools:
-  &ndash; offcputime on arm64 shows &ldquo;unknown&rdquo; from the stack trace.
-  &ndash; getting tonnes of stack traces is still slow &ndash; possible fix is to dump entire map remotely and send it at once instead of individually sending each key/value as a separate command.</p>
+<p>While most issues have been fixed, a few remain. Please check the <a href="https://github.com/joelagnel/bpfd/issues">issue
+tracker</a> and contribute patches or help by testing.</p>
 
-<h3>Conclusion and word on similiarity to SystemTap:</h3>
+<h3>Other usecases for BPFd</h3>
 
-<p>Building code for instrumentation on a different machine is beneficial and BPFd makes this possible. Tools like <a href="https://sourceware.org/systemtap/">SystemTap</a> have a similar feature. With SystemTap, one can build a kernel module containing the instrumentation/probing code  using the SystemTap scripting language. There&rsquo;s a <code>stap</code> command for that, and then the kernel module is copied over to the target and run using the <code>staprun</code>. However this is quite unsafe since kernel modules can crash the kernel. Further more, the stap scripting language is quite limited in comparison to the eBPF programs written in C. BCC tools are the future of such deep tracing endeavours.</p>
+<p>While the main usecase at the moment is easier use of BCC tools on cross-development models, another potential usecase
+that&rsquo;s gaining interest is easy loading of a BPF program. The BPFd code can be stored on disk in base64 format and sent
+to bpfd using something as simple as:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>joel@ubuntu:~/bpfprogs# cat my_bpf_prog.base64 | bpfd</span></code></pre></td></tr></table></div></figure>
+
+
+<p>In the Android kernel team, we are also expermenting for certain usecases that need eBPF, with loading a program with a
+forked BPFd instance, creating maps, and then pinning them for use at a later time once BPFd exits and then kill the
+BPFd fork since its done. Creating a separate process (fork/exec of BPFd) and having it load the eBPF program for you
+has the distinct advantage that the <a href="https://github.com/torvalds/linux/blob/master/samples/bpf/bpf_load.c#L546">runtime-fixing up map file
+descriptors</a> isn&rsquo;t needed in the loaded eBPF machine
+instructions. In other words, the eBPF program&rsquo;s instructions can be pre-determined and statically loaded. The reason
+for this convience is BPFd starts with the same number of file descriptors each time before the first map is created.</p>
+
+<h3>Conclusion</h3>
+
+<p>Building code for instrumentation on a different machine than the one actually
+running the debugging code is beneficial and BPFd makes this possible.
+Alternately, one could also write tracing code in their own kernel module on a
+development machine, copy it over to a remote target, and do similar
+tracing/debugging.  However, this is quite unsafe since kernel modules can
+crash the kernel. On the other hand, eBPF programs are verified before they&rsquo;re
+run and are guaranteed to be safe when loaded into the kernel, unlike kernel
+modules.  Furthermore, the BCC project offers great support for parsing the
+output of maps, processing them and presenting results all using the friendly
+Python programming language. BCC tools are quite promising and could be the
+future for easier and safer deep tracing endeavours. BPFd can hopefully make it
+even more easier to run these tools for folks such as Embedded system and Android
+developers who typically compile their kernels on their local machine and run
+them on a non-local target machine.</p>
+
+<p>If you have any questions, feel to <a href="http://www.linuxinternals.org/joel/">reach out</a> to me or drop me a note in the
+comments section.</p>
 </div>
   
   
@@ -673,7 +784,7 @@ He then defines what values of PMR would be consider as &ldquo;unmasked&rdquo; v
       </li>
     
       <li class="post">
-        <a href="/blog/2018/01/08/bpfd-bcc/">Bpfd Bcc</a>
+        <a href="/blog/2018/01/08/bpfd-bcc/">BPFd- Running BCC Tools Remotely Across Systems and Architectures</a>
       </li>
     
       <li class="post">
@@ -686,6 +797,10 @@ He then defines what values of PMR would be consider as &ldquo;unmasked&rdquo; v
     
       <li class="post">
         <a href="/blog/2016/03/20/tif-need-resched-why-is-it-needed/">TIF_NEED_RESCHED: Why Is It Needed</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output/">Understanding Critical Section Behavior With Ftrace Output</a>
       </li>
     
       <li class="post">

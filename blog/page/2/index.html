@@ -456,7 +456,7 @@ Note that, for return to kernel mode, I see that <code>preempt_schedule_irq</cod
       
   <header>
     
-      <h1 class="entry-title"><a href="/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/">Tying 2 Voltage Sources/signals Together</a></h1>
+      <h1 class="entry-title"><a href="/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output/">Understanding Critical Section Behavior With Ftrace Output</a></h1>
     
     
       <p class="meta">
@@ -472,29 +472,30 @@ Note that, for return to kernel mode, I see that <code>preempt_schedule_irq</cod
   
 
 
-<time datetime="2015-12-25T12:51:29-08:00" pubdate data-updated="true">Dec 25<span>th</span>, 2015</time>
+<time datetime="2016-03-12T11:08:38-08:00" pubdate data-updated="true">Mar 12<span>th</span>, 2016</time>
         
-           | <a href="/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2015/12/25/tying-2-voltage-sources-slash-signals-together/">Comments</a>
+           | <a href="/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output/#disqus_thread"
+             data-disqus-identifier="http://www.linuxinternals.org/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output/">Comments</a>
         
       </p>
     
   </header>
 
 
-  <div class="entry-content"><p>Recently I <a href="http://electronics.stackexchange.com/questions/207492/how-are-conflicts-between-voltage-sources-or-signals-resolved/207496">asked</a> a question on StackExchange about what happens when 2 voltage signals are tied together. What&rsquo;s the resultant voltage and what decides this voltage? The whole train of thought started when I was trying to contemplate what happens when you use pull-ups on signals that are not Open Drain.</p>
+  <div class="entry-content"><p>The ftrace irqsoff, preempt and preemptirqsoff tracers are amazing tools identify paths in Linux kernel code that block tasks from getting CPU-time. Essentially during these paths, the scheduler has its hands tied behind its back. There are mainly 2 cases where this can happen.</p>
 
-<p>I create and simulated a Circuit with the same scenario in LTSpice. &ldquo;V&rdquo; is the voltage between the &ldquo;+&rdquo; terminals of V1 and V2 and its shown on the right of the simulation. We will confirm the simulation result by doing some math later.<img src="/images/voltage-conflict/voltage-conflict-1.png"></p>
+<p>Local Interrupts disabled (masked):
+All CPU cores have a bit in a &lsquo;flags&rsquo; or status register, that is used to mask interrupts on that particular CPU. For x86 architectures, its in a <a href="https://en.wikipedia.org/wiki/FLAGS_register">FLAGS register</a> called the <a href="https://en.wikipedia.org/wiki/Interrupt_flag">IF bit</a>. With this bit set, timer interrupts wont be received without which the scheduler wont get a chance to run and schedule something else.</p>
 
-<p>The question is what is the voltage across the load after hooking them up together. And what do the currents look like? Is there a current flowing between the 2 sources as well (apart from the current flowing to the load) because 5v > 1.8v?
-The simulator refuses to do a simulation without your author adding an internal resistance to the voltage sources first. All voltages sources have certain internal resistances, so that&rsquo;s fair. This can be considered analogous to having a voltage signal with a certain resistance along its path which limits its current sourcing (or sinking) capabilities.</p>
+<p>Preemption disabled:
+Preemption is often disabled in the kernel when acquiring spinlocks. We went over the mechanics of spinlocks <a href="http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">previously</a>. There are other cases where preepmtion may be disabled as well. With preemption turned off, the scheduler will not preempt an existing task and prevent giving some other task a chance to run.</p>
 
-<p>So I added 1k resistances internally, normally the resistance of a voltage source is far less than this. AA batteries have just 0.1-0.2ohms.
-Now the circuit looks something like this: <img src="/images/voltage-conflict/voltage-conflict-2.png"></p>
+<p>Both these cases introduce latency to runnable tasks and so they are bad for predictablity and real-timeness. Disabling interrupts is worse than turning off preemption because this also has the added effect of introducing latency to other interrupts.</p>
 
-<p>One can simply apply <a href="https://en.wikipedia.org/wiki/Kirchhoff%27s_circuit_laws#Kirchhoff.27s_current_law_.28KCL.29">Kirchoff&rsquo;s current law</a> to the above circuit, the direction of currents would be as in the circuit. I1 and I2 are the currents flowing through R2 and R1 respectively.</p>
+<p>The tracers I just mentioned are called latency tracers and they trace the total latency and optionally the functions that are executed between when irqs are turned off and on, or when preempt is turned off and on. They are <a href="https://www.kernel.org/doc/Documentation/trace/ftrace.txt">documented well</a> so I wont go over them here.</p>
 
-<p>By Kirchoff&rsquo;s law, All the current entering the node labeled V will be equal to the current exiting it even if the currents are not in the actual direction shown above. From this we see:</p>
+<p>One thing I want to mention is about the preemptirqsoff tracer, it starts when when <em>either</em> preempt <em>or</em> irqs are turned off, and stops tracing only when <em>both</em> preemption and irqs are turned back on.
+This makes the preemptirqsoff tracer excellent in tracing kernel code paths that are blocking a task because regardless of whether preemption or irqs causing the latency, it treats both these cases identical or interchangeable. Borrowing from the amazing documentation, the following example illustrates this:</p>
 
 <figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
@@ -503,34 +504,58 @@ Now the circuit looks something like this: <img src="/images/voltage-conflict/vo
 <span class='line-number'>5</span>
 <span class='line-number'>6</span>
 <span class='line-number'>7</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>I1 = (1.8 - V) / 1k
-</span><span class='line'>I2 = (5 - V)   / 1k
-</span><span class='line'>I3 = (V - 0)   / 10k
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>Knowing the locations that have interrupts disabled or
+</span><span class='line'>preemption disabled for the longest times is helpful. But
+</span><span class='line'>sometimes we would like to know when either preemption and/or
+</span><span class='line'>interrupts are disabled.
 </span><span class='line'>
-</span><span class='line'>I3 = I2 + I1
-</span><span class='line'>V / 10k  = ((1.8 - V) / 1k) + ((5 - V) / 1k)
-</span><span class='line'>V = 3.2381v</span></code></pre></td></tr></table></div></figure>
+</span><span class='line'>Consider the following code:
+</span><span class='line'>
+</span><span class='line'>    local_irq_disable();
+</span><span class='line'>    call_function_with_irqs_off();
+</span><span class='line'>    preempt_disable();
+</span><span class='line'>    call_function_with_irqs_and_preemption_off();
+</span><span class='line'>    local_irq_enable();
+</span><span class='line'>    call_function_with_preemption_off();
+</span><span class='line'>    preempt_enable();
+</span><span class='line'>
+</span><span class='line'>The irqsoff tracer will record the total length of
+</span><span class='line'>call_function_with_irqs_off() and
+</span><span class='line'>call_function_with_irqs_and_preemption_off().
+</span><span class='line'>
+</span><span class='line'>The preemptoff tracer will record the total length of
+</span><span class='line'>call_function_with_irqs_and_preemption_off() and
+</span><span class='line'>call_function_with_preemption_off().
+</span><span class='line'>
+</span><span class='line'>But neither will trace the time that interrupts and/or
+</span><span class='line'>preemption is disabled. This total time is the time that we can
+</span><span class='line'>not schedule. To record this time, use the preemptirqsoff
+</span><span class='line'>tracer.</span></code></pre></td></tr></table></div></figure>
 
 
-<p>Fom this we see the voltage at V is somewhere between 5 and 1.8v. Infact, where it is between 5 and 1.8 depends on how strong or weak the resistances associated with the sources are. If the resistances are lower, then the sources have more of an influence and vice versa. An interesting observation is I1 is negative if you plug V=3.2v in the above equation. This means the current for voltage source V2 (the 1.8v voltage source) is actually flowing into it rather than out of it (its being sinked) and so I1 is actually opposite in direction to the picture shown above.</p>
+<p>It appears though that function tracing in preempt tracers is a bit broken and I <a href="https://lkml.org/lkml/2016/3/12/24">posted a fix</a> for a bug which prevent tracing functions which were called while interrupts were enabled and preemption is disabled. So in the above example, call_function_with_preemption_off wouldn&rsquo;t be traced. It still tracks the max latency and reports it, but it would omit the tracing of this function.</p>
 
-<p>A simpler case is having 2 voltage sources of the exact same voltage values, in this case the circuit would look like:<img src="/images/voltage-conflict/voltage-conflict-3.png"></p>
-
-<p><a href="https://en.wikipedia.org/wiki/Th%C3%A9venin%27s_theorem">Thevenin&rsquo;s theorem</a>  provides an easy simplication into the following, where the equivalent voltage source value is the same but the series resistance is now halved. This results in the following circuit:
-<img src="/images/voltage-conflict/voltage-conflict-4.png"></p>
-
-<p>Now you can use the <a href="https://en.wikipedia.org/wiki/Voltage_divider">Voltage divider</a> concept and easily solve this:</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>V = V2 * (R2 / (R1 + R2) )
-</span><span class='line'>  = 1.8v * ( 10k / (10k + 0.5k) )
-</span><span class='line'>  = 1.7142v</span></code></pre></td></tr></table></div></figure>
-
-
-<p>As you would notice, the 1k resistance dropped around 0.085v of voltage before getting to the 10k load.
-Thanks for reading. Please leave your comments or inputs below.</p>
+<p>Coming back to the original topic of understanding critical section kernel behavior, the beautiful ftrace output for latency tracers show you a set of flags on the left beside every function traced which illustrates what is going on with preemption and interrupts in the traced function. Here I will go over a set of trace outputs and show you some interesting things.</p>
 </div>
   
   
@@ -559,7 +584,7 @@ Thanks for reading. Please leave your comments or inputs below.</p>
       </li>
     
       <li class="post">
-        <a href="/blog/2018/01/08/bpfd-bcc/">Bpfd Bcc</a>
+        <a href="/blog/2018/01/08/bpfd-bcc/">BPFd- Running BCC Tools Remotely Across Systems and Architectures</a>
       </li>
     
       <li class="post">
@@ -572,6 +597,10 @@ Thanks for reading. Please leave your comments or inputs below.</p>
     
       <li class="post">
         <a href="/blog/2016/03/20/tif-need-resched-why-is-it-needed/">TIF_NEED_RESCHED: Why Is It Needed</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output/">Understanding Critical Section Behavior With Ftrace Output</a>
       </li>
     
       <li class="post">
