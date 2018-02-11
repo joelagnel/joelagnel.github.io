@@ -30,12 +30,6 @@
     </url>
     <url>
         <loc>
-            http://www.linuxinternals.org/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output/
-        </loc>
-        <lastmod>2016-12-30T19:46:07-08:00</lastmod>
-    </url>
-    <url>
-        <loc>
             http://www.linuxinternals.org/blog/2016/03/20/tif-need-resched-why-is-it-needed/
         </loc>
         <lastmod>2016-12-30T19:46:07-08:00</lastmod>
@@ -54,7 +48,7 @@
     </url>
     <url>
         <loc>http://www.linuxinternals.org/blog/2018/02/10/usdt-notes/</loc>
-        <lastmod>2018-02-10T23:35:36-08:00</lastmod>
+        <lastmod>2018-02-11T20:30:42-08:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/technical-resources/</loc>
@@ -62,7 +56,7 @@
     </url>
     <url>
         <loc>http://www.linuxinternals.org/joel/</loc>
-        <lastmod>2018-02-11T00:05:36-08:00</lastmod>
+        <lastmod>2018-02-11T00:07:37-08:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/robots.txt</loc>
@@ -74,10 +68,10 @@
     </url>
     <url>
         <loc>http://www.linuxinternals.org/</loc>
-        <lastmod>2018-02-10T23:53:17-08:00</lastmod>
+        <lastmod>2018-02-11T20:30:42-08:00</lastmod>
     </url>
     <url>
         <loc>http://www.linuxinternals.org/blog/archives/</loc>
-        <lastmod>2018-02-10T23:53:17-08:00</lastmod>
+        <lastmod>2018-02-11T20:30:42-08:00</lastmod>
     </url>
 </urlset>
