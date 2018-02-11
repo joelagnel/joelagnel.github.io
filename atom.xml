@@ -4,7 +4,7 @@
   <title><![CDATA[LinuxInternals.org]]></title>
   <link href="http://www.linuxinternals.org/atom.xml" rel="self"/>
   <link href="http://www.linuxinternals.org/"/>
-  <updated>2018-02-10T23:57:06-08:00</updated>
+  <updated>2018-02-11T00:05:44-08:00</updated>
   <id>http://www.linuxinternals.org/</id>
   <author>
     <name><![CDATA[Joel Fernandes]]></name>
@@ -880,6 +880,88 @@ Note that, for return to kernel mode, I see that <code>preempt_schedule_irq</cod
 <p>What I noticed is the Ftrace latency tracer complained about a long delay in the preempt disabled path of mutex_lock for one of my tests, and I made some <a href="http://www.spinics.net/lists/linux-rt-users/msg15022.html">noise</a> about it on the mailing list. Disabling preemption for long periods is generally a bad thing to do because during this duration, no other task can be scheduled on the CPU. However, Steven <a href="http://www.spinics.net/lists/linux-rt-users/msg15025.html">pointed out that</a> for this particular case, since we&rsquo;re checking for need_resched() and breaking out of the loop, we should be Ok. What would happen is, the scheduling timer interrupt (which calls <code>scheduler_tick()</code> I mentioned earlier) comes in and checks if higher priority tasks need CPU, and if they do, it sets <code>TIF_NEED_RESCHED</code>. Once the timer interrupt returns to our tightly spinning loop in mutex_lock, we would break out of the loop having noticed <code>need_resched()</code> and, re-enable preemption as shown in the code above. Thus the long duration of preemption doesn&rsquo;t turn out to be a problem as long tasks that need CPU are prioritized correctly. <code>need_resched()</code> achieved this fairness.</p>
 
 <p>Next time you see <code>if (need_resched())</code> in kernel code, you&rsquo;ll have a better idea why its there :). Let me know your comments if any.</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Understanding Critical Section Behavior With Ftrace Output]]></title>
+    <link href="http://www.linuxinternals.org/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output/"/>
+    <updated>2016-03-12T11:08:38-08:00</updated>
+    <id>http://www.linuxinternals.org/blog/2016/03/12/understanding-critical-section-behavior-with-ftrace-output</id>
+    <content type="html"><![CDATA[<p>The ftrace irqsoff, preempt and preemptirqsoff tracers are amazing tools identify paths in Linux kernel code that block tasks from getting CPU-time. Essentially during these paths, the scheduler has its hands tied behind its back. There are mainly 2 cases where this can happen.</p>
+
+<p>Local Interrupts disabled (masked):
+All CPU cores have a bit in a &lsquo;flags&rsquo; or status register, that is used to mask interrupts on that particular CPU. For x86 architectures, its in a <a href="https://en.wikipedia.org/wiki/FLAGS_register">FLAGS register</a> called the <a href="https://en.wikipedia.org/wiki/Interrupt_flag">IF bit</a>. With this bit set, timer interrupts wont be received without which the scheduler wont get a chance to run and schedule something else.</p>
+
+<p>Preemption disabled:
+Preemption is often disabled in the kernel when acquiring spinlocks. We went over the mechanics of spinlocks <a href="http://www.linuxinternals.org/blog/2014/05/07/spinlock-implementation-in-linux-kernel/">previously</a>. There are other cases where preepmtion may be disabled as well. With preemption turned off, the scheduler will not preempt an existing task and prevent giving some other task a chance to run.</p>
+
+<p>Both these cases introduce latency to runnable tasks and so they are bad for predictablity and real-timeness. Disabling interrupts is worse than turning off preemption because this also has the added effect of introducing latency to other interrupts.</p>
+
+<p>The tracers I just mentioned are called latency tracers and they trace the total latency and optionally the functions that are executed between when irqs are turned off and on, or when preempt is turned off and on. They are <a href="https://www.kernel.org/doc/Documentation/trace/ftrace.txt">documented well</a> so I wont go over them here.</p>
+
+<p>One thing I want to mention is about the preemptirqsoff tracer, it starts when when <em>either</em> preempt <em>or</em> irqs are turned off, and stops tracing only when <em>both</em> preemption and irqs are turned back on.
+This makes the preemptirqsoff tracer excellent in tracing kernel code paths that are blocking a task because regardless of whether preemption or irqs causing the latency, it treats both these cases identical or interchangeable. Borrowing from the amazing documentation, the following example illustrates this:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>Knowing the locations that have interrupts disabled or
+</span><span class='line'>preemption disabled for the longest times is helpful. But
+</span><span class='line'>sometimes we would like to know when either preemption and/or
+</span><span class='line'>interrupts are disabled.
+</span><span class='line'>
+</span><span class='line'>Consider the following code:
+</span><span class='line'>
+</span><span class='line'>    local_irq_disable();
+</span><span class='line'>    call_function_with_irqs_off();
+</span><span class='line'>    preempt_disable();
+</span><span class='line'>    call_function_with_irqs_and_preemption_off();
+</span><span class='line'>    local_irq_enable();
+</span><span class='line'>    call_function_with_preemption_off();
+</span><span class='line'>    preempt_enable();
+</span><span class='line'>
+</span><span class='line'>The irqsoff tracer will record the total length of
+</span><span class='line'>call_function_with_irqs_off() and
+</span><span class='line'>call_function_with_irqs_and_preemption_off().
+</span><span class='line'>
+</span><span class='line'>The preemptoff tracer will record the total length of
+</span><span class='line'>call_function_with_irqs_and_preemption_off() and
+</span><span class='line'>call_function_with_preemption_off().
+</span><span class='line'>
+</span><span class='line'>But neither will trace the time that interrupts and/or
+</span><span class='line'>preemption is disabled. This total time is the time that we can
+</span><span class='line'>not schedule. To record this time, use the preemptirqsoff
+</span><span class='line'>tracer.</span></code></pre></td></tr></table></div></figure>
+
+
+<p>It appears though that function tracing in preempt tracers is a bit broken and I <a href="https://lkml.org/lkml/2016/3/12/24">posted a fix</a> for a bug which prevent tracing functions which were called while interrupts were enabled and preemption is disabled. So in the above example, call_function_with_preemption_off wouldn&rsquo;t be traced. It still tracks the max latency and reports it, but it would omit the tracing of this function.</p>
+
+<p>Coming back to the original topic of understanding critical section kernel behavior, the beautiful ftrace output for latency tracers show you a set of flags on the left beside every function traced which illustrates what is going on with preemption and interrupts in the traced function. Here I will go over a set of trace outputs and show you some interesting things.</p>
 ]]></content>
   </entry>
   
