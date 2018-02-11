@@ -9,7 +9,7 @@
   <meta name="author" content="Joel Fernandes">
 
   
-  <meta name="description" content="Non-maskable interrupts (NMI) is a really useful feature for debugging, that hardware can provide. Unfortunately ARM doesn&rsquo;t provide an out-of- &hellip;">
+  <meta name="description" content="Userspace program when compiled to native can place tracepoints in them using a USDT (User Statically Defined Tracing), the details of the &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -103,6 +103,470 @@
       
   <header>
     
+      <h1 class="entry-title"><a href="/blog/2018/02/10/usdt-notes/">USDT for Reliable Userspace Event Tracing</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2018-02-10T23:22:39-08:00" pubdate data-updated="true">Feb 10<span>th</span>, 2018</time>
+        
+           | <a href="/blog/2018/02/10/usdt-notes/#disqus_thread"
+             data-disqus-identifier="http://www.linuxinternals.org/blog/2018/02/10/usdt-notes/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p>Userspace program when compiled to native can place tracepoints in them using a USDT (User Statically Defined Tracing), the details of the tracepoints (such as address and arguments) are placed as a note in the ELF binary for other tools to interpret. This at first seems much better than using Uprobes directly on userspace functions, since the latter not only needs symbol information from the binary but is also at the mercy of compiler optimizations and function inlining. In Android we directly write into <code>tracing_mark_write</code> for userspace tracepoints. While this has its advantages (simplicity), it also means that the only way to &ldquo;process&rdquo; the trace information for ALL tracing usecases is by reading back the trace buffer to userspace and processing them offline, thus needing a full user-kernel-user round trip. Further its not possible to easily create triggers on these events (dump the stack or stop tracing when an event fires, for example). Uprobes event tracing on the other hands gets the full benefit that ftrace events do. Also all userspace emitted trace data is a string which has to be parsed and post-processed. USDT seems a nice way to solve some of these problems, since we can then use the user-provided data and create Uprobes at the correct locations, and process these on the fly using BCC without things ever hitting the trace buffer or returning to userspace.</p>
+
+<p>This simple article is based on some notes I made while playing with USDT probes. To build a C program with an SDT probe, you can just include <code>sdt.h</code> and <code>sdt-config.h</code> from the Ubuntu systemtap-sdt-devel package, which works for both arm64 and x86.</p>
+
+<p>C program can be as simple as:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>#include "sdt.h"
+</span><span class='line'>int main() {
+</span><span class='line'>  DTRACE_PROBE("test", "probe1");
+</span><span class='line'>}</span></code></pre></td></tr></table></div></figure>
+
+
+<p>One compiling this, a new <code>.note.stapsdt</code> ELF section is created, which can be read by:
+<code>readelf -n &lt;bin-path&gt;</code></p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>Displaying notes found in: .note.stapsdt
+</span><span class='line'>  Owner                 Data size Description
+</span><span class='line'>  stapsdt              0x00000029 NT_STAPSDT (SystemTap probe descriptors)
+</span><span class='line'>    Provider: "test"
+</span><span class='line'>    Name: "probe1"
+</span><span class='line'>    Location: 0x0000000000000664, Base: 0x00000000000006f4, Semaphore: 0x0000000000000000
+</span><span class='line'>    Arguments: </span></code></pre></td></tr></table></div></figure>
+
+
+<p>Here there are no arguments, however we can use <code>DTRACE_PROBE2</code> to pass more, for example for 2 of them:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>int main() {
+</span><span class='line'>  int a = 1;
+</span><span class='line'>  int b = 2;
+</span><span class='line'>
+</span><span class='line'>  DTRACE_PROBE2("test", "probe1", a, b);
+</span><span class='line'>}</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The <code>readelf</code> tool now reads:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>Displaying notes found in: .note.stapsdt
+</span><span class='line'>  Owner                 Data size Description
+</span><span class='line'>  stapsdt              0x00000040 NT_STAPSDT (SystemTap probe descriptors)
+</span><span class='line'>    Provider: "test"
+</span><span class='line'>    Name: "probe1"
+</span><span class='line'>    Location: 0x0000000000000672, Base: 0x0000000000000704, Semaphore: 0x0000000000000000
+</span><span class='line'>    Arguments: -4@-4(%rbp) -4@-8(%rbp)</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Notice how the arguments show exactly how to access the parameters at the location. In this case, we know the arguments are on the stack and at momention offsets from the base pointer.</p>
+
+<p>Compiling with <code>-f-omit-frame-pointer</code> shows the following in <code>readelf</code>:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>Displaying notes found in: .note.stapsdt
+</span><span class='line'>  Owner                 Data size Description
+</span><span class='line'>  stapsdt              0x00000040 NT_STAPSDT (SystemTap probe descriptors)
+</span><span class='line'>    Provider: "test"
+</span><span class='line'>    Name: "probe1"
+</span><span class='line'>    Location: 0x0000000000000670, Base: 0x0000000000000704, Semaphore: 0x0000000000000000
+</span><span class='line'>    Arguments: -4@-4(%rsp) -4@-8(%rsp)</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Without the base pointer, the compiler relies on the stack pointer for the arguments. However notice that even though the C program is identical to the previous example, the &ldquo;arguments&rdquo; in the note section of the ELF has changed. This dynamic nature is one of the key reasons why SDT probes are so much better than say using <code>perf probe</code> directly to install Uprobes in the wild. With some help userspace and the compiler, we have more reliable information to access arguments without needing any DWARF debug info.</p>
+
+<p>Compiling with ARM64 gcc shows a slightly different output for the Arguments. Note that that Arguments is just a string which can be post processed by tools to fetch the probe data.</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>Displaying notes found in: .note.stapsdt
+</span><span class='line'>  Owner                 Data size Description
+</span><span class='line'>  stapsdt              0x0000003f NT_STAPSDT (SystemTap probe descriptors)
+</span><span class='line'>    Provider: "test"
+</span><span class='line'>    Name: "probe1"
+</span><span class='line'>    Location: 0x000000000000077c, Base: 0x0000000000000820, Semaphore: 0x0000000000000000
+</span><span class='line'>    Arguments: -4@[sp, 12] -4@[sp, 8]</span></code></pre></td></tr></table></div></figure>
+
+
+<p>USDT limitations as I see it:</p>
+
+<ul>
+<li><p>No information about types is stored. This is kind of sad, since now inorder to know what do with the values, one needs more information. These tracepoints were used with DTrace and SystemTap and turns out the scripts that probe these tracepoints are where the type information is stored or assumed. Uprobes tracer supports &ldquo;string&rdquo; but without knowing that the USDT is a string value, there&rsquo;s no way a Uprobe can be created on it, since all the stap note tells us is that there&rsquo;s a pointer there (who knows if its a 64-bit integer or a character pointer, for example).</p></li>
+<li><p>Argument names are also not stored. This means arguments have to be in the same order in the debug script as they are in the program being debugged.</p></li>
+</ul>
+
+
+<p>It seems with a little bit of work, both these things can be added. Does that warrant a new section or can the stapsdt section be augment without causing breakage of existing tools? I don&rsquo;t know yet.</p>
+
+<h2>SDT parsing logic</h2>
+
+<p>BCC has a USDT parser written to extract probes from the ELF. Read <code>parse_stapsdt_note</code> in <code>src/cc/bcc_elf.c</code> in the BCC tree for details.</p>
+
+<h2>Dynamic programming languages</h2>
+
+<p>Programs that are interpretted can&rsquo;t provide this information ahead of time. The <a href="https://github.com/sthima/libstapsdt#how-it-works">libstapsdt</a> tries to solve this by <a href="https://github.com/sthima/libstapsdt/blob/6045277309ff0425322bed5e71393ce5c8fa1344/src/libstapsdt.c#L89">creating a shared library on the fly</a> and linking to it from the dynamic program. This seems a bit fragile but appears to have users. There are wrappers in Python and Nodejs. <a href="https://medium.com/sthima-insights/we-just-got-a-new-super-power-runtime-usdt-comes-to-linux-814dc47e909f">Check this article</a> for more details.</p>
+
+<p>Open question I have:
+* Do any existing Linux tools handle USDT strings? Uprobe tracer does support strings, so the infrastructure seems to be there. I didn&rsquo;t see any hints of this in <a href="src/cc/usdt/usdt_args.cc">BCC</a>. Neither does <a href="https://github.com/sthima/libstapsdt/blob/6045277309ff0425322bed5e71393ce5c8fa1344/src/libstapsdt.h#L14">libstapsdt</a> seem to have this.</p>
+
+<h2>Other ideas</h2>
+
+<ul>
+<li><p>Creating Uprobes on the fly when a process is loaded: Ideally speaking, if the ELF note section had all the information that the kernel needed, then we could create the Uprobe events for the uprobe trace events at load time and keep them disabled without needing userspace to do anything else. This seems crude at first, but in the &ldquo;default&rdquo; case, it would still have almost no-overhead. This does mean that all the information Uprobe tracing needs will have to be stored in the note section. The other nice thing about this is, you no longer need to know the PID of all processes with USDTs in them.</p></li>
+<li><p>For dynamic languages, <code>libstapsdt</code> seems great, but it feels a bit hackish since it creates a temporary file for the stub. Perhaps uprobes can be created after the temporary file is dlopen&#8217;ed and then the file can be unlinked if it hasn&rsquo;t been already, so that there aren&rsquo;t any more references to the temporary file in the file system. Such a temporary file could also probably be in a RAM based file system.</p></li>
+</ul>
+
+
+<h2>References</h2>
+
+<ol>
+<li><a href="http://www.brendangregg.com/blog/2015-07-03/hacking-linux-usdt-ftrace.html">Brendan Gregg&rsquo;s USDT ftrace page</a></li>
+<li><a href="https://www.kernel.org/doc/Documentation/trace/uprobetracer.txt">Uprobe tracer in the kernel</a></li>
+<li><a href="https://medium.com/sthima-insights/we-just-got-a-new-super-power-runtime-usdt-comes-to-linux-814dc47e909f">USDT for dynamic languages</a></li>
+<li><a href="https://dzone.com/articles/next-generation-linux-tracing">Sasha Goldstein&rsquo;s &ldquo;Next Generation Linux Tracing With BPF&rdquo; article</a></li>
+</ol>
+
+</div>
+  
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2018/01/08/bpfd-bcc/">Bpfd Bcc</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2018-01-08T00:00:00-08:00" pubdate data-updated="true"></time>
+        
+           | <a href="/blog/2018/01/08/bpfd-bcc/#disqus_thread"
+             data-disqus-identifier="http://www.linuxinternals.org/blog/2018/01/08/bpfd-bcc/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>BPFd: Running BCC tools remotely across systems and architectures</h1>
+
+<h2>Introduction</h2>
+
+<p><a href="https://github.com/iovisor/bcc/blob/master/README.md">BCC tools</a> are a suite of kernel tracing tools that allow systems engineers to efficiently and safely get a deep understanding into the inner workings of a Linux system. Because they can&rsquo;t crash the kernel, they are safer than kernel modules and are also can be used in production. <a href="http://www.brendangregg.com/ebpf.html">Brendan Gregg has written</a> several nice tools, and talks in videos showing the full power of eBPF based tools.</p>
+
+<p>In the Android kernel team, we work mostly on ARM64 systems since most Android devices are on this architecture. BCC tools support on ARM64 systems had been broken for years. Recently this got <a href="https://github.com/iovisor/bcc/issues/1202">fixed</a> and one could run the tools but..</p>
+
+<p>Inorder for BCC tools to work at all, they need kernel sources. This is because most tools need to register callbacks on the ever changing kernel API inorder to get their data. Such callbacks are registered using the <a href="https://lwn.net/Articles/132196/">kprobe</a> infrastructure. Kernel sources are large in size and often can take up a large amount of space on the system being debugged. They can also get out of sync which may make the tools misbehave.</p>
+
+<p>The other issue is Clang and LLVM libraries need to be available on the target being traced. This is because the tools compile the needed BPF bytecode which are then loaded into the kernel. These libraries take up a lot space. It seems overkill you need a full blown compiler infrastructure on a system when the BPF code can be compiled elsewhere and maybe even compiled just once. Further these libraries need to be cross-compiled to run on the architecture you&rsquo;re tracing. That&rsquo;s possible, but why would anyone want to do that if they didn&rsquo;t need to? Cross-compiling compiler toolchains can be tedious and stressful.</p>
+
+<h2>BPFd: A daemon for BPF code and commands</h2>
+
+<p><a href="https://github.com/joelagnel/bpfd">Sources for BPFd can be downloaded here</a>.</p>
+
+<p>Instead of loading up all the tools, compiler infrastructure and kernel sources onto the targets being traced, I decided to write a proxy program named BPFd that would receive commands and perform them on behalf of whoever is requesting them. The program would encapsulate all the needs of BCC and perform them &ndash; this includes loading a BPF program, creating, deleting and looking up maps, attaching a BPF program to a kprobe, polling for new data that the BPF may have written into a perf buffer etc.</p>
+
+<h3>Simple design</h3>
+
+<p>The design of BPFd is quite simple, it expects commands on <code>stdin</code> (standard input) and provides the results over <code>stdout</code> (standard output). Every command is only a single line always, no matter how big the command is. This allows easy testing using <code>cat</code>, since one could simply <code>cat</code> a file with commands, and parse whether the results are as expected. Results from a command however can be multiple lines.</p>
+
+<p>For example, following is a command to BPFd for creating a BPF map:
+  BPF_CREATE_MAP 1 count 8 40 10240 0</p>
+
+<p>And the result from BPFd is:
+  bpf_create_map: ret=3</p>
+
+<p>The command tells BPFd to create a map named <code>count</code> with map type 1, with a key size of 6 bytes and a value size of 40, maximum of 10240 entries and no special flags. In return, BPFd created a map which is identified by file descriptor 3.</p>
+
+<p>With the simple standard input/output design, its possible to write wrappers around BPFd to handle more advanced communication such as USB or Networking. In Android, we are going to be communicating these commands over the USB-based <a href="https://developer.android.com/studio/command-line/adb.html">Android Debug Bridge</a>.</p>
+
+<h3>Changes to BCC tools</h3>
+
+<p><a href="https://github.com/joelagnel/bcc/tree/bcc-bpfd">Branch with latest changes to BCC tools</a></p>
+
+<p>A new <code>remotes</code> module has been added to BCC tools with an abstraction that different remote mechanisms should adhere to. This keeps code duplication to a minimum. Currently an <code>adb</code> remote and a <code>process</code> remote have been added.  The <code>adb</code> remote is for communication with the target device over USB or WiFi using the <a href="https://developer.android.com/studio/command-line/adb.html">Android Debug Bridge</a>. The <code>process</code> remote is for local testing. With this remote, BPFd is forked on the same machine running BCC and communicates with it over <code>stdin</code> and <code>stdout</code>.</p>
+
+<p>BCC tools modifications involve the following changes:
+&ndash; Adding support for remote communication with BPFd such as adb
+&ndash; Changes to BCC to send commands to the remote system
+&ndash; Making the kernel build more configurable so that kernel source and target architecture information can be passed through environment variables.
+&ndash; Changes to tools to accomodate the differences
+&ndash; Some bug fixes</p>
+
+<h3>Installation procedure: Trying this work out for yourself!</h3>
+
+<p>If you want to just see examples of the results of running these tools, <a href="#running-filetop">you could jump</a> straight to the tools section.
+This is just an example of a typical installation procedure, it should be fairly straight forward to get these steps working for other remotes or architectures. For this example, we&rsquo;ll refer to the machine where you do all your development and have your kernel sources available as the <code>development machine</code> and the machine you&rsquo;re tracing as the <code>target</code>.</p>
+
+<h4>Install BCC tools on your development host</h4>
+
+<p>Follow the <a href="https://github.com/iovisor/bcc/blob/master/INSTALL.md">steps here</a> to get BCC tools installed on your development machine.</p>
+
+<p>Except for the following changes:
+&ndash; Build BCC <a href="https://github.com/joelagnel/bcc/tree/bcc-bpfd">using this branch</a>
+&ndash; Read the section &ldquo;Build LLVM and Clang development libs&rdquo; in that document. Unfortunately BPF inline-assembler support in LLVM is fairly recent, so you may need to build your own LLVM till then. Once LLVM is built, add <code>&lt;path-to-llvm-source&gt;/build/bin/</code> to your <code>$PATH</code> and then build BCC.</p>
+
+<h4>Build/Install BPFd on your target machine</h4>
+
+<p><a href="https://github.com/joelagnel/bpfd">Clone and build the BPFd sources.</a>. This really depends on the target distro, typically you can store it anywere <code>$PATH</code> on the target can find it, in Android we store it in <code>/data/</code> for now. In the future we&rsquo;d want to store it in /system/bin/ once its an official Android package.</p>
+
+<h4>Prepare your kernel sources</h4>
+
+<ul>
+<li>Make sure the kernel sources are available on your development machine somewhere, and that the kernel build has completed atleast once in the kernel source directory.</li>
+</ul>
+
+
+<h4>Setup environment variables and run tools</h4>
+
+<p>The following environment variables need to be setup:
+&ndash; <code>ARCH</code> should point to the architecture of the <code>target</code> such as <code>x86</code> or <code>arm64</code>.
+&ndash; <code>BCC_KERNEL_SOURCE</code> should point to the kernel source directory.
+&ndash; <code>BCC_REMOTE</code> should point to the remote mechanism such as <code>adb</code>.</p>
+
+<p>Two example enviornment variable settings are provided which can be sourced. Here&rsquo;s one for <a href="https://github.com/joelagnel/bcc/blob/bcc-bpfd/arm64-adb.rc">adb interface with an arm64 Android target</a> and another one for a <a href="https://github.com/joelagnel/bcc/blob/bcc-bpfd/x86-local.rc">local x86 target with a process remote</a>.</p>
+
+<h3>BPF Demos: examples of different BCC tools running on Android</h3>
+
+<h4>Running filetop</h4>
+
+<p><code>filetop</code> is a BCC tool which shows you all read/write I/O operations with a similar experience to the <code>top</code> tool. In refreshes every few seconds giving you a live view of these operations.
+Goto your bcc directory and set the env variables needed. For Android running on Hikey960, I run:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>joel@ubuntu:~/bcc# source arm64-adb.rc</span></code></pre></td></tr></table></div></figure>
+
+
+<p>which basically sets the following environment variables:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>  export ARCH=arm64
+</span><span class='line'>  export BCC_KERNEL_SOURCE=/home/joel/sdb/hikey-kernel/
+</span><span class='line'>  export BCC_REMOTE=adb</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Next I start <code>filetop</code>:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>joel@ubuntu:~/bcc# ./tools/filetop.py 5</span></code></pre></td></tr></table></div></figure>
+
+
+<p>This tells the tool to monitor file I/O every 5 seconds.</p>
+
+<p>While <code>filetop</code> is running, I start the stock email app in Android and the output looks like:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>  Tracing... Output every 5 secs. Hit Ctrl-C to end
+</span><span class='line'>  13:29:25 loadavg: 0.33 0.23 0.15 2/446 2931
+</span><span class='line'> 
+</span><span class='line'>  TID    COMM             READS  WRITES R_Kb    W_Kb    T FILE
+</span><span class='line'>  3787   Binder:2985_8    44     0      140     0       R profile.db
+</span><span class='line'>  3792   m.android.email  89     0      130     0       R Email.apk
+</span><span class='line'>  3813   AsyncTask #3     29     0      48      0       R EmailProvider.db
+</span><span class='line'>  3808   SharedPreferenc  1      0      16      0       R AndroidMail.Main.xml
+</span><span class='line'>  3811   SharedPreferenc  1      0      16      0       R UnifiedEmail.xml
+</span><span class='line'>  3792   m.android.email  2      0      16      0       R deviceName
+</span><span class='line'>  3815   SharedPreferenc  1      0      16      0       R MailAppProvider.xml
+</span><span class='line'>  3813   AsyncTask #3     8      0      12      0       R EmailProviderBody.db
+</span><span class='line'>  3809   AsyncTask #1     8      0      12      0       R suggestions.db
+</span><span class='line'>  2434   WifiService      4      0      4       0       R iface_stat_fmt
+</span><span class='line'>  2434   WifiService      4      0      4       0       R iface_stat_fmt
+</span><span class='line'>  3792   m.android.email  66     0      2       0       R framework-res.apk</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Notice the Email.apk being read by Android to load the email application, and then various other reads happening related to the email app. Finally, WifiService continously reads iface_state_fmt to get network statistics for Android accounting.</p>
+
+<h4>Running biosnoop</h4>
+
+<p>Biosnoop is another great tool shows you block level I/O operations (bio) happening on the system along with the latency and size of the operation. Following is a sample output of running <code>tools/biosnoop.py</code> while doing random things in the Android system.</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>  TIME(s)        COMM           PID    DISK    T  SECTOR    BYTES   LAT(ms)
+</span><span class='line'>  0.000000000    jbd2/sdd13-8   2135   sdd     W  37414248  28672      1.90
+</span><span class='line'>  0.001563000    jbd2/sdd13-8   2135   sdd     W  37414304  4096       0.43
+</span><span class='line'>  0.003715000    jbd2/sdd13-8   2135   sdd     R  20648736  4096       1.94
+</span><span class='line'>  5.119298000    kworker/u16:1  3848   sdd     W  11968512  8192       1.72
+</span><span class='line'>  5.119421000    kworker/u16:1  3848   sdd     W  20357128  4096       1.80
+</span><span class='line'>  5.119443000    kworker/u16:1  3848   sdd     W  24551552  4096       1.82
+</span><span class='line'>  5.119462000    kworker/u16:1  3848   sdd     W  24551680  4096       1.82
+</span><span class='line'>  5.119478000    kworker/u16:1  3848   sdd     W  24617256  4096       1.83
+</span><span class='line'>  5.448831000    SettingsProvid 2415   sdd     W  20648752  8192       1.70</span></code></pre></td></tr></table></div></figure>
+
+
+<h4>Running hardirq</h4>
+
+<p>This tool measures the total time taken by different hardirqs in the systems. excessive time spent in hardirq can result in poor real-time performance of the system</p>
+
+<pre><code>joel@ubuntu:~/bcc# ./tools/hardirqs.py
+</code></pre>
+
+<p>Output:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>  Tracing hard irq event time... Hit Ctrl-C to end.
+</span><span class='line'>  HARDIRQ                    TOTAL_usecs
+</span><span class='line'>  wl18xx                             232
+</span><span class='line'>  dw-mci                            1066
+</span><span class='line'>  e82c0000.mali                     8514
+</span><span class='line'>  kirin                             9977
+</span><span class='line'>  timer                            22384</span></code></pre></td></tr></table></div></figure>
+
+
+<h4>Running biotop</h4>
+
+<p>Run biotop while launching the android Gallery app and doing random stuff:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>joel@ubuntu:~/bcc# ./tools/biotop.py</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Output:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>PID    COMM             D MAJ MIN DISK       I/O  Kbytes  AVGms
+</span><span class='line'>4524   droid.gallery3d  R 8   48  ?           33    1744   0.51
+</span><span class='line'>2135   jbd2/sdd13-8     W 8   48  ?           15     356   0.32
+</span><span class='line'>4313   kworker/u16:4    W 8   48  ?           26     232   1.61
+</span><span class='line'>4529   Jit thread pool  R 8   48  ?            4     184   0.27
+</span><span class='line'>2135   jbd2/sdd13-8     R 8   48  ?            7      68   2.19
+</span><span class='line'>2459   LazyTaskWriterT  W 8   48  ?            3      12   1.77
+</span><span class='line'>2457   TaskSnapshotPer  W 8   48  ?            3      12   1.72
+</span><span class='line'>4541   GLThread 152     R 8   48  ?            1       4   1.81
+</span><span class='line'>4545   Error dump: sys  W 8   48  ?            1       4   1.70</span></code></pre></td></tr></table></div></figure>
+
+
+<h3>Open issues as of this writing</h3>
+
+<p>While most issues have been fixed, a few remain. Patches and testing are welcomed!
+Following is an incomplete list:
+&ndash; cachetop doesn&rsquo;t show hits/misses counter on arm64
+&ndash; syscount reads <code>comm_for_pid</code> locally, instead of on the remote.
+&ndash; Issues with stacktrace based tools:
+  &ndash; offcputime on arm64 shows &ldquo;unknown&rdquo; from the stack trace.
+  &ndash; getting tonnes of stack traces is still slow &ndash; possible fix is to dump entire map remotely and send it at once instead of individually sending each key/value as a separate command.</p>
+
+<h3>Conclusion and word on similiarity to SystemTap:</h3>
+
+<p>Building code for instrumentation on a different machine is beneficial and BPFd makes this possible. Tools like <a href="https://sourceware.org/systemtap/">SystemTap</a> have a similar feature. With SystemTap, one can build a kernel module containing the instrumentation/probing code  using the SystemTap scripting language. There&rsquo;s a <code>stap</code> command for that, and then the kernel module is copied over to the target and run using the <code>staprun</code>. However this is quite unsafe since kernel modules can crash the kernel. Further more, the stap scripting language is quite limited in comparison to the eBPF programs written in C. BCC tools are the future of such deep tracing endeavours.</p>
+</div>
+  
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+    
       <h1 class="entry-title"><a href="/blog/2016/12/31/nmi-perf-armv8/">ARMv8: Flamegraph and NMI Support</a></h1>
     
     
@@ -190,359 +654,6 @@ He then defines what values of PMR would be consider as &ldquo;unmasked&rdquo; v
 
     </article>
   
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2016/06/18/ftrace-events-mechanism/">Ftrace Events Mechanism</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2016-06-18T22:29:26-07:00" pubdate data-updated="true">Jun 18<span>th</span>, 2016</time>
-        
-           | <a href="/blog/2016/06/18/ftrace-events-mechanism/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2016/06/18/ftrace-events-mechanism/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p>Ftrace events are a mechanism that allows different pieces of code in the kernel to &lsquo;broadcast&rsquo; events of interest. Such as a scheduler context-switch <code>sched_switch</code> for example. In the scheduler core&rsquo;s <code>__schedule</code> function, you&rsquo;ll see something like: <code>trace_sched_switch(preempt, prev, next);</code>
-This immediately results in a write to a per-cpu ring buffer storing info about what the previous task was, what the next one is, and whether the switch is happening as a result of kernel preemption (versus happening for other reasons such as a task waiting for I/O completion).</p>
-
-<p>Under the hood, these ftrace events are actually implemented using tracepoints. The terms events are tracepoints appear to be used interchangeably, but it appears one could use a trace point if desired without having to do anything with ftrace. Events on the other hand use ftrace.</p>
-
-<p>Let&rsquo;s discuss a bit about how a tracepoint works. Tracepoints are hooks that are inserted into points of code of interest and call a certain function of your choice (also known as a function probe). Inorder for the tracepoint to do anything, you have to register a function using <code>tracepoint_probe_register</code>. Multiple functions can be registered in a single hook. Once your tracepoint is hit, all functions registered to the tracepoint are executed. Also note that if no function is registered to the tracepoint, then the tracepoint is essentially a NOP with zero-overhead. Actually that&rsquo;s a lie, there is a branch (and some space) overhead only although negligible.</p>
-
-<p>Here is the heart of the code that executes when a tracepoint is hit:</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-<span class='line-number'>8</span>
-<span class='line-number'>9</span>
-<span class='line-number'>10</span>
-<span class='line-number'>11</span>
-<span class='line-number'>12</span>
-<span class='line-number'>13</span>
-<span class='line-number'>14</span>
-<span class='line-number'>15</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>#define __DECLARE_TRACE(name, proto, args, cond, data_proto, data_args) \
-</span><span class='line'>        extern struct tracepoint __tracepoint_##name;                   \
-</span><span class='line'>        static inline void trace_##name(proto)                          \
-</span><span class='line'>        {                                                               \
-</span><span class='line'>                if (static_key_false(&__tracepoint_##name.key))         \
-</span><span class='line'>                        __DO_TRACE(&__tracepoint_##name,                \
-</span><span class='line'>                                TP_PROTO(data_proto),                   \
-</span><span class='line'>                                TP_ARGS(data_args),                     \
-</span><span class='line'>                                TP_CONDITION(cond),,);                  \
-</span><span class='line'>                if (IS_ENABLED(CONFIG_LOCKDEP) && (cond)) {             \
-</span><span class='line'>                        rcu_read_lock_sched_notrace();                  \
-</span><span class='line'>                        rcu_dereference_sched(__tracepoint_##name.funcs);\
-</span><span class='line'>                        rcu_read_unlock_sched_notrace();                \
-</span><span class='line'>                }                                                       \
-</span><span class='line'>        }                                                   </span></code></pre></td></tr></table></div></figure>
-
-
-<p>The <code>static_key_false</code> in the above code will evaluate to false if there&rsquo;s no probe registered to the tracepoint.</p>
-
-<p>Digging further, <code>__DO_TRACE</code> does the following in <code>include/linux/tracepoint.h</code></p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-<span class='line-number'>8</span>
-<span class='line-number'>9</span>
-<span class='line-number'>10</span>
-<span class='line-number'>11</span>
-<span class='line-number'>12</span>
-<span class='line-number'>13</span>
-<span class='line-number'>14</span>
-<span class='line-number'>15</span>
-<span class='line-number'>16</span>
-<span class='line-number'>17</span>
-<span class='line-number'>18</span>
-<span class='line-number'>19</span>
-<span class='line-number'>20</span>
-<span class='line-number'>21</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>#define __DO_TRACE(tp, proto, args, cond, prercu, postrcu)              \
-</span><span class='line'>        do {                                                            \
-</span><span class='line'>                struct tracepoint_func *it_func_ptr;                    \
-</span><span class='line'>                void *it_func;                                          \
-</span><span class='line'>                void *__data;                                           \
-</span><span class='line'>                                                                        \
-</span><span class='line'>                if (!(cond))                                            \
-</span><span class='line'>                        return;                                         \
-</span><span class='line'>                prercu;                                                 \
-</span><span class='line'>                rcu_read_lock_sched_notrace();                          \
-</span><span class='line'>                it_func_ptr = rcu_dereference_sched((tp)-&gt;funcs);       \
-</span><span class='line'>                if (it_func_ptr) {                                      \
-</span><span class='line'>                        do {                                            \
-</span><span class='line'>                                it_func = (it_func_ptr)-&gt;func;          \
-</span><span class='line'>                                __data = (it_func_ptr)-&gt;data;           \
-</span><span class='line'>                                ((void(*)(proto))(it_func))(args);      \
-</span><span class='line'>                        } while ((++it_func_ptr)-&gt;func);                \
-</span><span class='line'>                }                                                       \
-</span><span class='line'>                rcu_read_unlock_sched_notrace();                        \
-</span><span class='line'>                postrcu;                                                \
-</span><span class='line'>        } while (0)</span></code></pre></td></tr></table></div></figure>
-
-
-<p>There&rsquo;s a lot going on there, but main part is the loop that goes through all function pointers (probes) that were registered to the tracepoint and calls them one after the other.</p>
-
-<p>Now, here&rsquo;s some secrets. Since all ftrace events are tracepoints under the hood, you can piggy back onto interesting events in your kernel with your own probes. This allows you to write interesting tracers. Infact this is precisely how blktrace works, and also is how SystemTap hooks into ftrace events.
-<a href="https://github.com/joelagnel/joel-snips/blob/master/k-patches/cpuhists.diff">Checkout a module I wrote</a> that hooks onto <code>sched_switch</code> to build some histograms. The code there is still buggy but if you mess with it and improve it please share your work.</p>
-
-<p>Now that we know a good amount about tracepoints, ftrace events are easy.</p>
-
-<p>An ftrace event being based on tracepoints, makes full use of it but it has to do more. Ofcourse, it has to write events out to the ring buffer.
-When you enable an ftrace event using debug-fs, at that instant the ftrace events framework registers an &ldquo;event probe&rdquo; function at the tracepoint that represents the event. How? Using <code>tracepoint_probe_register</code> just as we discussed.</p>
-
-<p>The code for this is in the file <code>kernel/trace/trace_events.c</code> in function <code>trace_event_reg</code>.</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-<span class='line-number'>8</span>
-<span class='line-number'>9</span>
-<span class='line-number'>10</span>
-<span class='line-number'>11</span>
-<span class='line-number'>12</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>int trace_event_reg(struct trace_event_call *call,
-</span><span class='line'>                    enum trace_reg type, void *data)
-</span><span class='line'>{
-</span><span class='line'>        struct trace_event_file *file = data;
-</span><span class='line'>
-</span><span class='line'>        WARN_ON(!(call-&gt;flags & TRACE_EVENT_FL_TRACEPOINT));
-</span><span class='line'>        switch (type) {
-</span><span class='line'>        case TRACE_REG_REGISTER:
-</span><span class='line'>                return tracepoint_probe_register(call-&gt;tp,
-</span><span class='line'>                                                 call-&gt;class-&gt;probe,
-</span><span class='line'>                                                 file);
-</span><span class='line'>...</span></code></pre></td></tr></table></div></figure>
-
-
-<p>The probe function <code>call-&gt;class-&gt;probe</code> for trace events is defined in the file <code>include/trace/trace_events.h</code> and does the job of writing to the ring buffer. In a nutshell, the code gets a handle into the ring buffer, does assignment of the values to the entry structure and writes it out. There is some magic going on here to accomodate arbitrary number of arguments but I am yet to figure that out.</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-<span class='line-number'>8</span>
-<span class='line-number'>9</span>
-<span class='line-number'>10</span>
-<span class='line-number'>11</span>
-<span class='line-number'>12</span>
-<span class='line-number'>13</span>
-<span class='line-number'>14</span>
-<span class='line-number'>15</span>
-<span class='line-number'>16</span>
-<span class='line-number'>17</span>
-<span class='line-number'>18</span>
-<span class='line-number'>19</span>
-<span class='line-number'>20</span>
-<span class='line-number'>21</span>
-<span class='line-number'>22</span>
-<span class='line-number'>23</span>
-<span class='line-number'>24</span>
-<span class='line-number'>25</span>
-<span class='line-number'>26</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>static notrace void                                                     \
-</span><span class='line'>trace_event_raw_event_##call(void *__data, proto)                       \
-</span><span class='line'>{                                                                       \
-</span><span class='line'>        struct trace_event_file *trace_file = __data;                   \
-</span><span class='line'>        struct trace_event_data_offsets_##call __maybe_unused __data_offsets;\
-</span><span class='line'>        struct trace_event_buffer fbuffer;                              \
-</span><span class='line'>        struct trace_event_raw_##call *entry;                           \
-</span><span class='line'>        int __data_size;                                                \
-</span><span class='line'>                                                                        \
-</span><span class='line'>        if (trace_trigger_soft_disabled(trace_file))                    \
-</span><span class='line'>                return;                                                 \
-</span><span class='line'>                                                                        \
-</span><span class='line'>        __data_size = trace_event_get_offsets_##call(&__data_offsets, args); \
-</span><span class='line'>                                                                        \
-</span><span class='line'>        entry = trace_event_buffer_reserve(&fbuffer, trace_file,        \
-</span><span class='line'>                                 sizeof(*entry) + __data_size);         \
-</span><span class='line'>                                                                        \
-</span><span class='line'>        if (!entry)                                                     \
-</span><span class='line'>                return;                                                 \
-</span><span class='line'>                                                                        \
-</span><span class='line'>        tstruct                                                         \
-</span><span class='line'>                                                                        \
-</span><span class='line'>        { assign; }                                                     \
-</span><span class='line'>                                                                        \
-</span><span class='line'>        trace_event_buffer_commit(&fbuffer);                            \
-</span><span class='line'>}</span></code></pre></td></tr></table></div></figure>
-
-
-<p>Let me know any comments you have or any other ftrace event behavior you&rsquo;d like explained.</p>
-</div>
-  
-  
-
-
-    </article>
-  
-  
-    <article>
-      
-  <header>
-    
-      <h1 class="entry-title"><a href="/blog/2016/03/20/tif-need-resched-why-is-it-needed/">TIF_NEED_RESCHED: Why Is It Needed</a></h1>
-    
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2016-03-20T01:44:32-07:00" pubdate data-updated="true">Mar 20<span>th</span>, 2016</time>
-        
-           | <a href="/blog/2016/03/20/tif-need-resched-why-is-it-needed/#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org/blog/2016/03/20/tif-need-resched-why-is-it-needed/">Comments</a>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><p><code>TIF_NEED_RESCHED</code> is one of the many &ldquo;thread information flags&rdquo; stored along side every task in the Linux Kernel. One of the flags which is vital to the working of preemption is <code>TIF_NEED_RESCHED</code>. Inorder to explain why its important and how it works, I will go over 2 cases where <code>TIF_NEED_RESCHED</code> is used.</p>
-
-<h2>Preemption</h2>
-
-<p>Preemption is the process of forceably grabbing CPU from a user or kernel context and giving it to someone else (user or kernel). It is the means for timesharing a CPU between competing tasks (I will use task as terminology for process).
-In Linux, the way it works is a timer interrupt (called the tick) interrupts the task that is running and makes a decision about whether a task or a kernel code path (executing on behalf of a task like in a syscall) is to be preempted. This decision is based on whether the task has been running long-enough and something higher priority woke up and needs CPU now, or is ready to run.</p>
-
-<p>These things happen in <code>scheduler_tick()</code>, the exact path is <em>TIMER HARDWARE INTERRUPT</em> &ndash;> <code>scheduler_tick</code> &ndash;> <code>task_tick_fair</code> &ndash;> <code>entity_tick</code> &ndash;> <code>check_preempt_tick</code>.
-<code>entity_tick()</code> updates various run time statistics of the task, and <code>check_preempt_tick()</code> is where TIF_NEED_RESCHED is set.</p>
-
-<p>Here&rsquo;s a small bit of code in <code>check_preempt_tick</code></p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-<span class='line-number'>8</span>
-<span class='line-number'>9</span>
-<span class='line-number'>10</span>
-<span class='line-number'>11</span>
-<span class='line-number'>12</span>
-<span class='line-number'>13</span>
-<span class='line-number'>14</span>
-<span class='line-number'>15</span>
-<span class='line-number'>16</span>
-<span class='line-number'>17</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
-</span><span class='line'>{
-</span><span class='line'>        unsigned long ideal_runtime, delta_exec;
-</span><span class='line'>        struct sched_entity *se;
-</span><span class='line'>        s64 delta;
-</span><span class='line'>
-</span><span class='line'>        ideal_runtime = sched_slice(cfs_rq, curr);
-</span><span class='line'>        delta_exec = curr-&gt;sum_exec_runtime - curr-&gt;prev_sum_exec_runtime;
-</span><span class='line'>        if (delta_exec &gt; ideal_runtime) {
-</span><span class='line'>                resched_curr(rq_of(cfs_rq));
-</span><span class='line'>                /*
-</span><span class='line'>                 * The current task ran long enough, ensure it doesn't get
-</span><span class='line'>                 * re-elected due to buddy favours.
-</span><span class='line'>                 */
-</span><span class='line'>                clear_buddies(cfs_rq, curr);
-</span><span class='line'>                return;
-</span><span class='line'>        }</span></code></pre></td></tr></table></div></figure>
-
-
-<p>Here you see a decision is made that the process ran long enough based on its runtime and if so call <code>resched_curr</code>. Turns out <code>resched_curr</code> sets the <code>TIF_NEED_RESCHED</code> for the current task! This informs whoever looks at the flag, that this process should be scheduled out soon.</p>
-
-<p>Even though this flag is set at this point, the task is not going to be preempted yet. This is because preemption happens at specific points such as exit of interrupts. If the flag is set because the timer interrupt (scheduler decided) decided that something of higher priority needs CPU now and sets <code>TIF_NEED_RESCHED</code>, then at the exit of the timer interrupt (interrupt exit path), <code>TIF_NEED_RESCHED</code> is checked, and because it is set &ndash; <code>schedule()</code> is called causing context switch to happen to another process of higher priority, instead of just returning to the existing process that the timer interrupted normally would.
-Lets examine where this happens.</p>
-
-<p>For return from interrupt to user-mode:</p>
-
-<p>If the tick interrupt happened user-mode code was running, then in somewhere in the interrupt exit path for x86, this call chain calls schedule <code>ret_from_intr</code> &ndash;> <code>reint_user</code> &ndash;> <code>prepare_exit_to_usermode</code>. Here the need_reched flag is checked, and if true <code>schedule()</code> is called.</p>
-
-<p>For return from interrupt to kernel mode, things are a bit different (skip this para if you think it&rsquo;ll confuse you).</p>
-
-<p>This feature requires kernel preemption to be enabled. The call chain doing the preemption is: <code>ret_from_intr</code> &ndash;> <code>reint_kernel</code> &ndash;> <code>preempt_schedule_irq</code> (see <code>arch/x86/entry/entry_64.S</code>) which calls <code>schedule</code>.
-Note that, for return to kernel mode, I see that <code>preempt_schedule_irq</code> calls <code>schedule</code> anyway whether need_resched flag is set or not, this is probably Ok but I am wondering if need_resched should be checked here before <code>schedule</code> is called. Perhaps it would be an optimiziation to avoid unecessarily calling <code>schedule</code>. One reason for not doing so would be, say any other interrupt other than timer tick is returning to the interrupted kernel space, then in these cases for example &ndash; if the timer tick didn&rsquo;t get a chance to run (because all other local interrupts are disabled in Linux until an interrupt finishes, in this case our non-timer interrupt), then we&rsquo;d want the exit path of the non-timer interrupt to behave just like the exit path of the timer tick interrupt would behave, whether need_resched is set or not.</p>
-
-<h2>Critical sections in kernel code where preemption is off</h2>
-
-<p>One nice example of a code path where preemption is off is the <code>mutex_lock</code> path in the kernel. In the kernel, there is an optimization where if a mutex is already locked and not available, but if the lock owner (the task currently holding the lock) is running on another CPU, then the mutex temporarily becomes a spinlock (which means it will spin until it can get the lock) instead of behaving like a mutex (which sleeps until the lock is available). The pseudo code looks like this:</p>
-
-<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
-<span class='line-number'>2</span>
-<span class='line-number'>3</span>
-<span class='line-number'>4</span>
-<span class='line-number'>5</span>
-<span class='line-number'>6</span>
-<span class='line-number'>7</span>
-<span class='line-number'>8</span>
-<span class='line-number'>9</span>
-<span class='line-number'>10</span>
-</pre></td><td class='code'><pre><code class=''><span class='line'>mutex_lock() {
-</span><span class='line'>  disable_preempt();
-</span><span class='line'>  if (lock can't be acquired and the lock holding task is currently running) {
-</span><span class='line'>  while (lock_owner_running && !need_resched()) {
-</span><span class='line'>      cpu_relax();
-</span><span class='line'>  }
-</span><span class='line'>  }
-</span><span class='line'>  enable_preempt();
-</span><span class='line'>  acquire_lock_or_sleep();
-</span><span class='line'>}</span></code></pre></td></tr></table></div></figure>
-
-
-<p>The lock path does exactly what I described. <code>cpu_relax()</code> is arch specific which is called when the CPU has to do nothing but wait. It gives hints to the CPU that it can put itself into an idle state or use its resources for someone else. For x86, it involves calling the <a href="https://en.wikipedia.org/wiki/HLT">halt instruction</a>.</p>
-
-<p>What I noticed is the Ftrace latency tracer complained about a long delay in the preempt disabled path of mutex_lock for one of my tests, and I made some <a href="http://www.spinics.net/lists/linux-rt-users/msg15022.html">noise</a> about it on the mailing list. Disabling preemption for long periods is generally a bad thing to do because during this duration, no other task can be scheduled on the CPU. However, Steven <a href="http://www.spinics.net/lists/linux-rt-users/msg15025.html">pointed out that</a> for this particular case, since we&rsquo;re checking for need_resched() and breaking out of the loop, we should be Ok. What would happen is, the scheduling timer interrupt (which calls <code>scheduler_tick()</code> I mentioned earlier) comes in and checks if higher priority tasks need CPU, and if they do, it sets <code>TIF_NEED_RESCHED</code>. Once the timer interrupt returns to our tightly spinning loop in mutex_lock, we would break out of the loop having noticed <code>need_resched()</code> and, re-enable preemption as shown in the code above. Thus the long duration of preemption doesn&rsquo;t turn out to be a problem as long tasks that need CPU are prioritized correctly. <code>need_resched()</code> achieved this fairness.</p>
-
-<p>Next time you see <code>if (need_resched())</code> in kernel code, you&rsquo;ll have a better idea why its there :). Let me know your comments if any.</p>
-</div>
-  
-  
-
-
-    </article>
-  
   <div class="pagination">
     
       <a class="prev" href="/blog/page/2/">&larr; Older</a>
@@ -556,6 +667,14 @@ Note that, for return to kernel mode, I see that <code>preempt_schedule_irq</cod
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2018/02/10/usdt-notes/">USDT for Reliable Userspace Event Tracing</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2018/01/08/bpfd-bcc/">Bpfd Bcc</a>
+      </li>
     
       <li class="post">
         <a href="/blog/2016/12/31/nmi-perf-armv8/">ARMv8: Flamegraph and NMI Support</a>

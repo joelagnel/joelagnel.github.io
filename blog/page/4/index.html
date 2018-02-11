@@ -5,7 +5,7 @@
 <!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
 <head>
   <meta charset="utf-8">
-  <title>Design of Fork Followed by Exec in Linux - LinuxInternals.org</title>
+  <title>LinuxInternals.org</title>
   <meta name="author" content="Joel Fernandes">
 
   
@@ -18,7 +18,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   
-  <link rel="canonical" href="http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux">
+  <link rel="canonical" href="http://www.linuxinternals.org/blog/page/4">
   <link href="/favicon.png" rel="icon">
   <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
   <link href="/atom.xml" rel="alternate" title="LinuxInternals.org" type="application/atom+xml">
@@ -95,12 +95,15 @@
 -->
   <div id="main">
     <div id="content">
-      <div>
-<article class="hentry" role="article">
+      <div class="blog-index">
   
+  
+  
+    <article>
+      
   <header>
     
-      <h1 class="entry-title">Design of Fork Followed by Exec in Linux</h1>
+      <h1 class="entry-title"><a href="/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/">Design of Fork Followed by Exec in Linux</a></h1>
     
     
       <p class="meta">
@@ -118,15 +121,15 @@
 
 <time datetime="2014-04-22T21:06:11-07:00" pubdate data-updated="true">Apr 22<span>nd</span>, 2014</time>
         
-           | <a href="#disqus_thread"
-             data-disqus-identifier="http://www.linuxinternals.org">Comments</a>
+           | <a href="/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/#disqus_thread"
+             data-disqus-identifier="http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/">Comments</a>
         
       </p>
     
   </header>
 
 
-<div class="entry-content"><p>A lot of folks ask <em>why do you have to do fork and then an exec, to execute a new program?</em> and <em>why can&rsquo;t it be done in one step?</em>, or <em>why does fork <a href="http://man7.org/linux/man-pages/man2/fork.2.html">create a copy-on-writed address space</a>, to only have it thrown away later when you do an exec?</em>. So I decided do a small write up about this topic.</p>
+  <div class="entry-content"><p>A lot of folks ask <em>why do you have to do fork and then an exec, to execute a new program?</em> and <em>why can&rsquo;t it be done in one step?</em>, or <em>why does fork <a href="http://man7.org/linux/man-pages/man2/fork.2.html">create a copy-on-writed address space</a>, to only have it thrown away later when you do an exec?</em>. So I decided do a small write up about this topic.</p>
 
 <p>On a separate note, firstly it is important to remember that <code>fork</code> is not used for threading, its primary use is to create a separate process, that is a child of the parent process that called <code>fork</code>.</p>
 
@@ -193,59 +196,20 @@ There you go, now when the COW memory region is written to, a page fault happens
 
 <p>Please share any comments you may have in the comments section.</p>
 </div>
-
-
-  <footer>
-    <p class="meta">
-      
   
-
-<span class="byline author vcard">Posted by <span class="fn">Joel Fernandes</span></span>
-
-      
-
-
-
-
-
-
-
-
   
 
 
-<time datetime="2014-04-22T21:06:11-07:00" pubdate data-updated="true">Apr 22<span>nd</span>, 2014</time>
-      
-
-
-    </p>
+    </article>
+  
+  <div class="pagination">
     
-      <div class="sharing">
-  
-  <a href="//twitter.com/share" class="twitter-share-button" data-url="http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/" data-via="" data-counturl="http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/" >Tweet</a>
-  
-  
-  
-</div>
-
+    <a href="/blog/archives">Blog Archives</a>
     
-    <p class="meta">
-      
-      
-        <a class="basic-alignment right" href="/blog/2014/04/24/studying-cache-line-sharing-effects-on-smp-systems/" title="Next Post: Studying cache-line sharing effects on SMP systems">Studying cache-line sharing effects on SMP systems &raquo;</a>
-      
-    </p>
-  </footer>
-</article>
-
-  <section>
-    <h1>Comments</h1>
-    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a class="next" href="/blog/page/3/">Newer &rarr;</a>
+    
+  </div>
 </div>
-  </section>
-
-</div>
-
 <aside class="sidebar">
   
     <section>
@@ -302,7 +266,6 @@ There you go, now when the COW memory region is written to, a page fault happens
   
 </aside>
 
-
     </div>
   </div>
   <footer role="contentinfo"><p>
@@ -317,10 +280,7 @@ There you go, now when the COW memory region is written to, a page fault happens
       var disqus_shortname = 'linuxinternals1';
       
         
-        // var disqus_developer = 1;
-        var disqus_identifier = 'http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/';
-        var disqus_url = 'http://www.linuxinternals.org/blog/2014/04/22/design-of-fork-followed-by-exec-in-linux/';
-        var disqus_script = 'embed.js';
+        var disqus_script = 'count.js';
       
     (function () {
       var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
